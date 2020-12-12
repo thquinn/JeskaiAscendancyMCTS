@@ -17,6 +17,7 @@ namespace JeskaiAscendancyMCTS {
             new int[]{ 2, 0, 1 },
             new int[]{ 2, 1, 0 }
         };
+        public static int CARD_ENUM_LENGTH = Enum.GetNames(typeof(Card)).Length;
         public static Dictionary<Card, string> CARD_NAMES = new Dictionary<Card, string>() {
             { Card.None, "NONE" },
             // lands
@@ -118,8 +119,23 @@ namespace JeskaiAscendancyMCTS {
         }
 
         public int[] GetMoves() {
+            List<int> moves;
             // TODO: Deduplicate all choices: discarding/topping/pondering copies of the same card.
             if (choiceDiscard > 0) {
+                Debug.Assert(choiceScry <= 2, "Discard amounts larger than 2 not supported.");
+                if (choiceDiscard == 1) {
+                    return handQuantities.Select((n, i) => { return n > 0 ? i : 0; }).Where(n => n != 0).ToArray();
+                }
+                moves = new List<int>();
+                for (int i = 1; i < handQuantities.Length; i++) {
+                    if (handQuantities[i] == 0) continue;
+                    if (handQuantities[i] >= 2) moves.Add(i * CARD_ENUM_LENGTH + i);
+                    for (int j = i + 1; j < handQuantities.Length; j++) {
+                        if (handQuantities[j] == 0) continue;
+                        moves.Add(i * CARD_ENUM_LENGTH + j);
+                    }
+                }
+                return moves.ToArray();
             }
             if (choiceScry > 0) {
                 Debug.Assert(choiceScry == 1, "Scry amounts larger than 1 not supported.");
@@ -132,7 +148,7 @@ namespace JeskaiAscendancyMCTS {
             if (choiceObsessive > 0) {
             }
             // Playing lands and casting spells.
-            List<int> moves = new List<int>();
+            moves = new List<int>();
             ManaCost maxWhite = GetMaxWhiteMana(), maxBlue = GetMaxBlueMana(), maxRed = GetMaxRedMana(), maxMixed = GetMaxMixedMana();
             for (int i = landPlay ? 1 : LAND_ETB_TAPPED.Length + 1; i < handQuantities.Length; i++) {
                 if (handQuantities[i] == 0) {
@@ -165,15 +181,14 @@ namespace JeskaiAscendancyMCTS {
         }
         // Returns 1 for deterministic moves, and the probability of the resultant state for stochastic moves.
         public float ExecuteMove(int move) {
-            int cardEnumValueLimit = Enum.GetNames(typeof(Card)).Length;
             // Choices.
             if (choiceDiscard > 0) {
                 while (move > 0) {
-                    int cardIndex = move % cardEnumValueLimit;
+                    int cardIndex = move % CARD_ENUM_LENGTH;
                     Card card = (Card)cardIndex;
                     GoToGraveyard(card);
                     handQuantities[cardIndex]--;
-                    move /= cardEnumValueLimit;
+                    move /= CARD_ENUM_LENGTH;
                 }
                 choiceDiscard = 0;
                 return 1;
@@ -183,6 +198,7 @@ namespace JeskaiAscendancyMCTS {
                     bottomOfDeck.Enqueue(topOfDeck[0]);
                     topOfDeck.RemoveAt(0);
                 }
+                choiceScry = 0;
                 if (postScryDraws > 0) {
                     float probability = Draw(postScryDraws);
                     postScryDraws = 0;
@@ -192,10 +208,10 @@ namespace JeskaiAscendancyMCTS {
             }
             if (choiceTop > 0) {
                 while (move > 0) {
-                    int cardIndex = move % cardEnumValueLimit;
+                    int cardIndex = move % CARD_ENUM_LENGTH;
                     handQuantities[cardIndex]--;
                     topOfDeck.Insert(0, cardIndex);
-                    move /= cardEnumValueLimit;
+                    move /= CARD_ENUM_LENGTH;
                 }
                 choiceTop = 0;
                 return 1;
@@ -319,10 +335,6 @@ namespace JeskaiAscendancyMCTS {
                 default:
                     throw new Exception("Unhandled spell resolving: " + CARD_NAMES[stack]);
             }
-        }
-        public string MoveToString(int move) {
-            // TODO: Move strings.
-            return "";
         }
 
         public bool IsWon() {
@@ -481,16 +493,59 @@ namespace JeskaiAscendancyMCTS {
             if (bottomOfDeck.Count > 0) {
                 sb.AppendLine("Bottom of library: " + string.Join(", ", bottomOfDeck.Select(i => CARD_NAMES[(Card)i])));
             }
+            if (graveyardFatestitchers > 0 || graveyardInventories > 0 || graveyardOther > 0) {
+                tokens.Clear();
+                if (graveyardFatestitchers > 0) tokens.Add(graveyardFatestitchers + " Fatestitcher");
+                if (graveyardInventories > 0) tokens.Add(graveyardInventories + " Frantic Inventory");
+                if (graveyardOther > 0) tokens.Add(graveyardOther + " other");
+                sb.AppendLine("Graveyard: " + string.Join(", ", tokens));
+            }
             return sb.ToString();
+        }
+        public string MoveToString(int move) {
+            if (choiceDiscard > 0) {
+                List<string> tokens = new List<string>();
+                while (move > 0) {
+                    tokens.Add(CARD_NAMES[(Card)(move % CARD_ENUM_LENGTH)]);
+                    move /= CARD_ENUM_LENGTH;
+                }
+                return string.Format("Discard {0}.", string.Join(", ", tokens));
+            }
+            if (choiceScry > 0) {
+                return string.Format("Scry {0} to the {1}.", CARD_NAMES[(Card)topOfDeck[0]], move == -1 ? "bottom" : "top");
+            }
+            if (choiceTop > 0) {
+            }
+            if (choicePonder) {
+            }
+            if (choiceObsessive > 0) {
+                return move == 1 ? "Cast Obsessive Search with madness." : "Decline to cast Obsessive Search.";
+            }
+            if (move == SPECIAL_MOVE_FETCH_PLAINS) {
+                return "Play Evolving Wilds, fetch a tapped Plains.";
+            }
+            if (move == SPECIAL_MOVE_FETCH_ISLAND) {
+                return "Play Evolving Wilds, fetch a tapped Island.";
+            }
+            if (move == SPECIAL_MOVE_FETCH_MOUNTAIN) {
+                return "Play Evolving Wilds, fetch a tapped Mountain.";
+            }
+            if (move == SPECIAL_MOVE_UNEARTH_FATESTITCHER) {
+                return "Unearth a Fatestitcher.";
+            }
+            if (move == SPECIAL_MOVE_END_TURN) {
+                return "End the turn.";
+            }
+            return string.Format("{0} {1}.", move <= LAND_ETB_TAPPED.Length ? "Play" : "Cast", CARD_NAMES[(Card)move]);
         }
     }
 
     public enum Card {
         None,
         // lands
+        Plains,
         Island,
         Mountain,
-        Plains,
         MysticMonastery,
         EvolvingWilds,
         // spells
