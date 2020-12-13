@@ -59,6 +59,8 @@ namespace JeskaiAscendancyMCTS {
         static int SPECIAL_MOVE_FETCH_MOUNTAIN = -3;
         static int SPECIAL_MOVE_FETCH_FAIL_TO_FIND = -4;
         static int SPECIAL_MOVE_UNEARTH_FATESTITCHER = -5;
+        static int SPECIAL_MOVE_MADNESS_OBSESSIVE_SEARCH = -6;
+        static int SPECIAL_MOVE_NO_MADNESS_OBSESSIVE_SEARCH = -7;
 
         public int turn;
 
@@ -93,9 +95,10 @@ namespace JeskaiAscendancyMCTS {
         int choiceScry; // Scry the top N cards.
         int choiceTop; // Top N cards with Brainstorm.
         bool choicePonder; // Reorder top 3 cards or shuffle.
-        int obsessiveTriggers; // N Obsessive Searches were discarded: pay U to draw a card?
+        int choiceObsessive; // N Obsessive Searches were discarded: pay U to draw a card?
         int ascendancyTriggers; // We have one or more Ascendancy triggers waiting to trigger after we float mana.
         int postScryDraws; // We have one or more draws waiting for a scry.
+        bool cleanupDiscard; // The current choiceDiscard is happening in the cleanup step.
 
         public State(Dictionary<Card, int> decklist, int startingHandSize) {
             turn = 1;
@@ -126,9 +129,9 @@ namespace JeskaiAscendancyMCTS {
         public int[] GetMoves() {
             List<int> moves;
             if (choiceDiscard > 0) {
-                Debug.Assert(choiceDiscard <= 2, "Discard amounts larger than 2 not supported.");
                 int fatestitchersInHand = handQuantities[(int)Card.Fatestitcher];
-                if (choiceDiscard == 1) {
+                if (choiceDiscard == 1 || choiceDiscard > 2) {
+                    // If we're discarding more than two cards, do them one at a time for better tree structure.
                     if (fatestitchersInHand >= 1) return new int[] { (int)Card.Fatestitcher };
                     return handQuantities.Select((n, i) => { return n > 0 ? i : 0; }).Where(n => n != 0).ToArray();
                 }
@@ -171,8 +174,8 @@ namespace JeskaiAscendancyMCTS {
                 if (one == two) return new int[] { 2, 3, 5, 6 };
                 return new int[] { 0, 1, 2, 3, 4, 5, 6 };
             }
-            if (obsessiveTriggers > 0) {
-                return GetMaxBlueMana().Item1 > 0 ? new int[] { 0, 1 } : new int[] { 0 };
+            if (choiceObsessive > 0) {
+                return GetMaxBlueMana().Item1 > 0 ? new int[] { SPECIAL_MOVE_MADNESS_OBSESSIVE_SEARCH, SPECIAL_MOVE_NO_MADNESS_OBSESSIVE_SEARCH } : new int[] { SPECIAL_MOVE_NO_MADNESS_OBSESSIVE_SEARCH };
             }
             // Playing lands and casting spells.
             moves = new List<int>();
@@ -245,13 +248,23 @@ namespace JeskaiAscendancyMCTS {
                     Card card = (Card)cardIndex;
                     GoToGraveyard(card);
                     if (card == Card.ObsessiveSearch) {
-                        obsessiveTriggers++;
+                        choiceObsessive++;
                     }
                     handQuantities[cardIndex]--;
                     choiceDiscard--;
                     move /= CARD_ENUM_LENGTH;
                 }
-                if (obsessiveTriggers == 0 && ascendancyTriggers == 0 && stack == Card.None) return 1;
+                if (choiceDiscard > 0) return 1; // We still have discards to make.
+                if (choiceObsessive > 0) return 1; // We have Obsessive Search triggers on the stack.
+                if (choiceObsessive == 0 && ascendancyTriggers == 0 && stack == Card.None) {
+                    if (cleanupDiscard) {
+                        cleanupDiscard = false;
+                        Untap();
+                        return Draw();
+                    } else {
+                        return 1;
+                    }
+                }
                 // If a spell or Ascendancy trigger(s), was waiting for a Jeskai Ascendancy discard, we can go ahead and let it resolve now.
             } else if (choiceScry > 0) {
                 if (move == -1) {
@@ -287,9 +300,16 @@ namespace JeskaiAscendancyMCTS {
                 choicePonder = false;
                 return Draw();
             } else if (move == SPECIAL_MOVE_END_TURN) {
-                EndStepAndUntap();
-                // TODO: Discard down to maximum hand size.
-                return Draw();
+                EndStep();
+                int cardsInHand = handQuantities.Sum();
+                if (cardsInHand > 7) {
+                    choiceDiscard = cardsInHand - 7;
+                    cleanupDiscard = true;
+                    return 1;
+                } else {
+                    Untap();
+                    return Draw();
+                }
             } else if (move == SPECIAL_MOVE_FETCH_PLAINS || move == SPECIAL_MOVE_FETCH_ISLAND || move == SPECIAL_MOVE_FETCH_MOUNTAIN || move == SPECIAL_MOVE_FETCH_FAIL_TO_FIND) {
                 Shuffle();
                 landPlay = false;
@@ -338,7 +358,7 @@ namespace JeskaiAscendancyMCTS {
                 ascendancyTriggers = ascendancies;
                 if (stack == Card.TreasureCruise) {
                     // Delve.
-                    // SIMPLIFICATION: Always delve the max amount, avoiding Fatestitchers and Frantic Inventories if possible.
+                    // SIMPLIFICATION: Always delve the max amount, preserving Fatestitchers, then Frantic Inventories.
                     int generic = 7;
                     int min = Math.Min(generic, graveyardOther);
                     graveyardOther -= min;
@@ -360,15 +380,23 @@ namespace JeskaiAscendancyMCTS {
             }
             // Stack resolving.
             float probability = 1;
-            if (obsessiveTriggers > 0) {
-                if (move == 1) {
-                    obsessiveTriggers--;
+            if (choiceObsessive > 0) {
+                // SIMPLIFICATION: Resolve all madnessed Obsessive Searches before all Ascendancy triggers, even though in reality they can be interleaved.
+                choiceObsessive--;
+                if (move == SPECIAL_MOVE_MADNESS_OBSESSIVE_SEARCH) {
                     SpendMana(0, 1, 0, 0);
                     ascendancyTriggers += ascendancies;
                     probability *= Draw();
                 }
-                obsessiveTriggers--;
-                if (obsessiveTriggers > 0) return probability;
+                if (choiceObsessive == 0) {
+                    if (cleanupDiscard) {
+                        // SIMPLIFICATION: Ignore Ascendancy triggers from cleanup-cast Obsessive Searches.
+                        cleanupDiscard = false;
+                        Untap();
+                        return probability * Draw();
+                    }
+                    if (ascendancyTriggers == 0) return 1;
+                }
             }
             if (ascendancyTriggers > 0) {
                 return probability * ResolveAscendancyTrigger();
@@ -376,6 +404,7 @@ namespace JeskaiAscendancyMCTS {
             Card spell = stack;
             stack = Card.None;
             if (spell != Card.JeskaiAscendancy) {
+                // SIMPLIFICATION: Some spells hit the graveyard before they're done resolving.
                 GoToGraveyard(spell);
             }
             switch (spell) {
@@ -477,11 +506,13 @@ namespace JeskaiAscendancyMCTS {
             return i;
         }
 
-        void EndStepAndUntap() {
+        void EndStep() {
             whiteMana = tappedLands[(int)Card.Plains];
             blueMana = tappedLands[(int)Card.Island];
             redMana = tappedLands[(int)Card.Mountain];
             totalPower = 0;
+        }
+        void Untap() {
             turn++;
             landPlay = true;
             exiledCount += untappedFatestitchers;
@@ -729,7 +760,7 @@ namespace JeskaiAscendancyMCTS {
                 Card zero = (Card)topOfDeck[ponderOrder[0]], one = (Card)topOfDeck[ponderOrder[1]], two = (Card)topOfDeck[ponderOrder[2]];
                 return string.Format("Ponder: {0} on top, then {1}, then {2}.", CARD_NAMES[zero], CARD_NAMES[one], CARD_NAMES[two]);
             }
-            if (obsessiveTriggers > 0) {
+            if (choiceObsessive > 0) {
                 return move == 1 ? "Cast Obsessive Search with madness." : "Decline to cast Obsessive Search.";
             }
             if (move == SPECIAL_MOVE_FETCH_PLAINS) {

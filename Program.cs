@@ -35,7 +35,10 @@ namespace JeskaiAscendancyMCTS {
                 int[] moves = state.GetMoves();
                 Console.WriteLine(string.Join("\n", moves.Select(s => s + ": " + state.MoveToString(s))));
                 Console.WriteLine();
-                int move = int.Parse(Console.ReadLine());
+                int move = int.MinValue;
+                while (!moves.Contains(move)) {
+                    if (!int.TryParse(Console.ReadLine(), out move)) move = int.MinValue;
+                }
                 if (moves.Length > 1) decisions++;
                 float probability = state.ExecuteMove(move);
                 Console.WriteLine("Resulting state had {0}% probability.", (probability * 100).ToString("N1"));
