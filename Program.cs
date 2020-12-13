@@ -11,9 +11,10 @@ namespace JeskaiAscendancyMCTS {
         static void Main(string[] args) {
             State state = new State(new Dictionary<Card, int>() {
                 { Card.Plains, 1 },
-                { Card.Island, 16 },
+                { Card.Island, 12 },
                 { Card.Mountain, 1 },
                 { Card.MysticMonastery, 4 },
+                { Card.EvolvingWilds, 4 },
                 { Card.Brainstorm, 4 },
                 { Card.CeruleanWisps, 2 },
                 { Card.Fatestitcher, 4 },
@@ -28,8 +29,8 @@ namespace JeskaiAscendancyMCTS {
             }, 7);
             
             while (true) {
-                state.SanityCheck();
                 Console.WriteLine(state);
+                state.SanityCheck();
                 Console.WriteLine(string.Join("\n", state.GetMoves().Select(s => s + ": " + state.MoveToString(s))));
                 Console.WriteLine();
                 int move = int.Parse(Console.ReadLine());
