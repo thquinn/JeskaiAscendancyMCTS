@@ -59,8 +59,6 @@ namespace JeskaiAscendancyMCTS {
         static int SPECIAL_MOVE_FETCH_MOUNTAIN = -3;
         static int SPECIAL_MOVE_FETCH_FAIL_TO_FIND = -4;
         static int SPECIAL_MOVE_UNEARTH_FATESTITCHER = -5;
-        static int SPECIAL_MOVE_MADNESS_OBSESSIVE_SEARCH = -6;
-        static int SPECIAL_MOVE_NO_MADNESS_OBSESSIVE_SEARCH = -7;
 
         public int turn;
 
@@ -69,6 +67,7 @@ namespace JeskaiAscendancyMCTS {
         int shuffledLibraryCount;
         int[] shuffledLibraryQuantities;
         Queue<int> bottomOfDeck;
+        bool deckedOut;
 
         // Hand.
         int[] handQuantities;
@@ -175,7 +174,7 @@ namespace JeskaiAscendancyMCTS {
                 return new int[] { 0, 1, 2, 3, 4, 5, 6 };
             }
             if (choiceObsessive > 0) {
-                return GetMaxBlueMana().Item1 > 0 ? new int[] { SPECIAL_MOVE_MADNESS_OBSESSIVE_SEARCH, SPECIAL_MOVE_NO_MADNESS_OBSESSIVE_SEARCH } : new int[] { SPECIAL_MOVE_NO_MADNESS_OBSESSIVE_SEARCH };
+                return GetMaxBlueMana().Item1 > 0 ? new int[] { 0, 1 } : new int[] { 0 };
             }
             // Playing lands and casting spells.
             moves = new List<int>();
@@ -241,6 +240,8 @@ namespace JeskaiAscendancyMCTS {
         }
         // Returns 1 for deterministic moves, and the probability of the resultant state for stochastic moves.
         public float ExecuteMove(int move) {
+            // TODO: We can't just multiply this with the probability of every event; we need to multiply by N! at the end.
+            float probability = 1;
             // Choices.
             if (choiceDiscard > 0) {
                 while (move > 0) {
@@ -299,6 +300,24 @@ namespace JeskaiAscendancyMCTS {
                 } // (else: don't reorder)
                 choicePonder = false;
                 return Draw();
+            } else if (choiceObsessive > 0) {
+                // SIMPLIFICATION: Resolve all madnessed Obsessive Searches before all Ascendancy triggers, even though in reality they can be interleaved.
+                choiceObsessive--;
+                if (move == 1) {
+                    SpendMana(0, 1, 0, 0);
+                    ascendancyTriggers += ascendancies;
+                    probability *= Draw();
+                }
+                if (choiceObsessive == 0) {
+                    if (cleanupDiscard) {
+                        // TODO: We may need to re-discard if we have > 7.
+                        // SIMPLIFICATION: Ignore Ascendancy triggers from cleanup-cast Obsessive Searches.
+                        cleanupDiscard = false;
+                        Untap();
+                        return probability * Draw();
+                    }
+                    if (ascendancyTriggers == 0) return 1;
+                }
             } else if (move == SPECIAL_MOVE_END_TURN) {
                 EndStep();
                 int cardsInHand = handQuantities.Sum();
@@ -359,6 +378,7 @@ namespace JeskaiAscendancyMCTS {
                 if (stack == Card.TreasureCruise) {
                     // Delve.
                     // SIMPLIFICATION: Always delve the max amount, preserving Fatestitchers, then Frantic Inventories.
+                    // TODO: Treasure Cruise is currently delving itself.
                     int generic = 7;
                     int min = Math.Min(generic, graveyardOther);
                     graveyardOther -= min;
@@ -379,32 +399,13 @@ namespace JeskaiAscendancyMCTS {
                 }
             }
             // Stack resolving.
-            float probability = 1;
-            if (choiceObsessive > 0) {
-                // SIMPLIFICATION: Resolve all madnessed Obsessive Searches before all Ascendancy triggers, even though in reality they can be interleaved.
-                choiceObsessive--;
-                if (move == SPECIAL_MOVE_MADNESS_OBSESSIVE_SEARCH) {
-                    SpendMana(0, 1, 0, 0);
-                    ascendancyTriggers += ascendancies;
-                    probability *= Draw();
-                }
-                if (choiceObsessive == 0) {
-                    if (cleanupDiscard) {
-                        // SIMPLIFICATION: Ignore Ascendancy triggers from cleanup-cast Obsessive Searches.
-                        cleanupDiscard = false;
-                        Untap();
-                        return probability * Draw();
-                    }
-                    if (ascendancyTriggers == 0) return 1;
-                }
-            }
             if (ascendancyTriggers > 0) {
                 return probability * ResolveAscendancyTrigger();
             }
             Card spell = stack;
             stack = Card.None;
             if (spell != Card.JeskaiAscendancy) {
-                // SIMPLIFICATION: Some spells hit the graveyard before they're done resolving.
+                // SIMPLIFICATION: Instants and sorceries go to the graveyard when cast instead of when resolving. We don't cast anything relevant at instant speed anyway.
                 GoToGraveyard(spell);
             }
             switch (spell) {
@@ -449,8 +450,15 @@ namespace JeskaiAscendancyMCTS {
         public bool IsWon() {
             return totalPower >= 20;
         }
+        public bool IsLost() {
+            return deckedOut;
+        }
 
         float Draw() {
+            if (topOfDeck.Count == 0 && shuffledLibraryCount == 0 && bottomOfDeck.Count == 0) {
+                deckedOut = true;
+                return 1;
+            }
             float probability;
             int i;
             if (topOfDeck.Count > 0) {
@@ -458,7 +466,6 @@ namespace JeskaiAscendancyMCTS {
                 topOfDeck.RemoveAt(0);
                 probability = 1;
             } else if (shuffledLibraryCount == 0) {
-                // TODO: Decking out.
                 i = bottomOfDeck.Dequeue();
                 probability = 1;
             } else {
@@ -471,6 +478,10 @@ namespace JeskaiAscendancyMCTS {
             return probability;
         }
         float Draw(int n) {
+            if (topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count < n) {
+                deckedOut = true;
+                return 1;
+            }
             float totalProbability = 1;
             int topDecks = 0;
             for (int i = 0; i < n; i++) {
@@ -794,6 +805,7 @@ namespace JeskaiAscendancyMCTS {
     public enum Card {
         None,
         // lands
+        // TODO: More dual lands.
         Plains,
         Island,
         Mountain,
