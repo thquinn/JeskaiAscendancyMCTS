@@ -27,17 +27,24 @@ namespace JeskaiAscendancyMCTS {
                 { Card.Ponder, 4 },
                 { Card.TreasureCruise, 2 },
             }, 7);
-            
-            while (true) {
+
+            int decisions = 0;
+            while (!state.IsWon()) {
                 Console.WriteLine(state);
                 state.SanityCheck();
-                Console.WriteLine(string.Join("\n", state.GetMoves().Select(s => s + ": " + state.MoveToString(s))));
+                int[] moves = state.GetMoves();
+                Console.WriteLine(string.Join("\n", moves.Select(s => s + ": " + state.MoveToString(s))));
                 Console.WriteLine();
                 int move = int.Parse(Console.ReadLine());
+                if (moves.Length > 1) decisions++;
                 float probability = state.ExecuteMove(move);
                 Console.WriteLine("Resulting state had {0}% probability.", (probability * 100).ToString("N1"));
                 Console.WriteLine();
             }
+
+            Console.WriteLine(state);
+            Console.WriteLine("Won on turn {0} with {1} decisions!", state.turn, decisions);
+            Console.ReadLine();
         }
     }
 }

@@ -50,7 +50,7 @@ namespace JeskaiAscendancyMCTS {
             { Card.ObsessiveSearch, new ManaCost(0, 1, 0, 0) },
             { Card.Opt, new ManaCost(0, 1, 0, 0) },
             { Card.Ponder, new ManaCost(0, 1, 0, 0) },
-            { Card.TreasureCruise, new ManaCost(0, 1, 0, 7) }, // TODO: Delve.
+            { Card.TreasureCruise, new ManaCost(0, 1, 0, 7) }
         };
         public bool[] LAND_ETB_TAPPED = new bool[] { false, false, false, false, true, false }; // starting with None, then Plains
         static int SPECIAL_MOVE_END_TURN = 0;
@@ -83,7 +83,7 @@ namespace JeskaiAscendancyMCTS {
         int graveyardFatestitchers, graveyardInventories, graveyardOther;
 
         // Exile.
-        int exiledFatestitchers;
+        int exiledCount;
 
         // Stack.
         Card stack; // Which card is waiting for Jeskai Ascendancy trigger(s) to resolve?
@@ -210,12 +210,18 @@ namespace JeskaiAscendancyMCTS {
                     // SIMPLIFICATION: No hardcast Fatestitchers.
                     continue;
                 }
+                if (card == Card.TreasureCruise) {
+                    int genericWithDelve = maxBlue.Item2 + graveyardFatestitchers + graveyardInventories + graveyardOther;
+                    if (maxBlue.Item1 < 1 || (maxBlue.Item1 + genericWithDelve) < 8) continue;
+                    moves.Add((int)Card.TreasureCruise);
+                    continue;
+                }
                 if (i >= LAND_ETB_TAPPED.Length) {
                     // Normal mana costs.
                     ManaCost cost = MANA_COSTS[card];
                     if (cost.Item1 > 0) {
                         // Jeskai Ascendancy.
-                        // TODO: A more generic solution when we have more than just mono-blue cards and Jeskai Ascendancy.
+                        // TODO: A more generic solution when we have nonblue cards other than Jeskai Ascendancy.
                         if (!wur) continue;
                     } else {
                         if (maxBlue.Item1 < cost.Item2 || (maxBlue.Item1 + maxBlue.Item2) < (cost.Item2 + cost.Item4)) continue;
@@ -223,7 +229,8 @@ namespace JeskaiAscendancyMCTS {
                 }
                 moves.Add(i);
             }
-            if (graveyardFatestitchers > 0 && maxBlue.Item1 > 0) {
+            if (ascendancies > 0 && graveyardFatestitchers > 0 && maxBlue.Item1 > 0) {
+                // SIMPLIFICATION: Only unearth Fatestitchers with at least one Jeskai Ascendancy in play. They can otherwise be used to fix, but it's marginal.
                 moves.Add(SPECIAL_MOVE_UNEARTH_FATESTITCHER);
             }
             moves.Add(SPECIAL_MOVE_END_TURN);
@@ -253,9 +260,9 @@ namespace JeskaiAscendancyMCTS {
                 }
                 choiceScry = 0;
                 if (postScryDraws > 0) {
-                    float probability = Draw(postScryDraws);
+                    float output = Draw(postScryDraws);
                     postScryDraws = 0;
-                    return probability;
+                    return output;
                 }
                 return 1;
             } else if (choiceTop > 0) {
@@ -329,22 +336,42 @@ namespace JeskaiAscendancyMCTS {
                 handQuantities[move]--;
                 stack = (Card)move;
                 ascendancyTriggers = ascendancies;
-                ManaCost cost = MANA_COSTS[stack];
-                SpendMana(cost.Item1, cost.Item2, cost.Item3, cost.Item4);
+                if (stack == Card.TreasureCruise) {
+                    // Delve.
+                    // SIMPLIFICATION: Always delve the max amount, avoiding Fatestitchers and Frantic Inventories if possible.
+                    int generic = 7;
+                    int min = Math.Min(generic, graveyardOther);
+                    graveyardOther -= min;
+                    exiledCount += min;
+                    generic -= min;
+                    min = Math.Min(generic, graveyardInventories);
+                    graveyardInventories -= min;
+                    exiledCount += min;
+                    generic -= min;
+                    min = Math.Min(generic, graveyardFatestitchers);
+                    graveyardFatestitchers -= min;
+                    exiledCount += min;
+                    generic -= min;
+                    SpendMana(0, 1, 0, generic);
+                } else {
+                    ManaCost cost = MANA_COSTS[stack];
+                    SpendMana(cost.Item1, cost.Item2, cost.Item3, cost.Item4);
+                }
             }
             // Stack resolving.
+            float probability = 1;
             if (obsessiveTriggers > 0) {
                 if (move == 1) {
                     obsessiveTriggers--;
                     SpendMana(0, 1, 0, 0);
                     ascendancyTriggers += ascendancies;
-                    return Draw();
+                    probability *= Draw();
                 }
-                obsessiveTriggers = 0;
-                return 1;
+                obsessiveTriggers--;
+                if (obsessiveTriggers > 0) return probability;
             }
             if (ascendancyTriggers > 0) {
-                return ResolveAscendancyTrigger();
+                return probability * ResolveAscendancyTrigger();
             }
             Card spell = stack;
             stack = Card.None;
@@ -354,7 +381,7 @@ namespace JeskaiAscendancyMCTS {
             switch (spell) {
                 case Card.Brainstorm:
                     choiceTop = 2;
-                    return Draw(3);
+                    return probability * Draw(3);
                 case Card.CeruleanWisps:
                     if (tappedFatestitchers > 0) {
                         tappedFatestitchers--;
@@ -362,29 +389,29 @@ namespace JeskaiAscendancyMCTS {
                     } else {
                         UntapLands(1);
                     }
-                    return Draw();
+                    return probability * Draw();
                 case Card.FranticInventory:
-                    return Draw(graveyardInventories);
+                    return probability * Draw(graveyardInventories);
                 case Card.FranticSearch:
                     UntapLands(3);
                     choiceDiscard = 2;
-                    return Draw(3);
+                    return probability * Draw(3);
                 case Card.GitaxianProbe:
-                    return Draw();
+                    return probability * Draw();
                 case Card.JeskaiAscendancy:
                     ascendancies++;
-                    return 1;
+                    return probability;
                 case Card.ObsessiveSearch:
-                    return Draw();
+                    return probability * Draw();
                 case Card.Opt:
                     choiceScry = 1;
                     postScryDraws = 1;
-                    return RevealTop(1);
+                    return probability * RevealTop(1);
                 case Card.Ponder:
                     choicePonder = true;
-                    return RevealTop(3);
+                    return probability * RevealTop(3);
                 case Card.TreasureCruise:
-                    return Draw(3);
+                    return probability * Draw(3);
                 default:
                     throw new Exception("Unhandled spell resolving: " + CARD_NAMES[stack]);
             }
@@ -457,8 +484,8 @@ namespace JeskaiAscendancyMCTS {
             totalPower = 0;
             turn++;
             landPlay = true;
-            exiledFatestitchers += untappedFatestitchers;
-            exiledFatestitchers += tappedFatestitchers;
+            exiledCount += untappedFatestitchers;
+            exiledCount += tappedFatestitchers;
             untappedFatestitchers = 0;
             tappedFatestitchers = 0;
             // Untap only lands that produce multiple colors of mana.
@@ -494,7 +521,7 @@ namespace JeskaiAscendancyMCTS {
             tappedFatestitchers = 0;
             totalPower += untappedFatestitchers;
             choiceDiscard = 1;
-            return Draw();
+            return Draw(); // SIMPLIFICATION: Always loot.
         }
 
         Tuple<int, int> GetMaxBlueMana() {
@@ -727,7 +754,7 @@ namespace JeskaiAscendancyMCTS {
         }
         public void SanityCheck() {
             Debug.Assert(shuffledLibraryCount == shuffledLibraryQuantities.Sum(), "Shuffled library count has not been updated correctly.");
-            int totalCards = topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count + handQuantities.Sum() + untappedLands.Sum() + tappedLands.Sum() + ascendancies + untappedFatestitchers + tappedFatestitchers + graveyardFatestitchers + graveyardInventories + graveyardOther + exiledFatestitchers;
+            int totalCards = topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count + handQuantities.Sum() + untappedLands.Sum() + tappedLands.Sum() + ascendancies + untappedFatestitchers + tappedFatestitchers + graveyardFatestitchers + graveyardInventories + graveyardOther + exiledCount;
             if (stack != Card.None) totalCards++;
             Debug.Assert(totalCards == 60, string.Format("Total cards in the state is {0}, not 60!\n{1}", totalCards, this));
         }
