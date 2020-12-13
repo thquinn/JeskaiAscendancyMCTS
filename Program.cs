@@ -9,7 +9,9 @@ namespace JeskaiAscendancyMCTS {
         public static Random random = new Random();
 
         static void Main(string[] args) {
-            State state = new State(new Dictionary<Card, int>() {
+            int won = 0, lost = 0;
+            while (true) {
+                State state = new State(new Dictionary<Card, int>() {
                 { Card.Plains, 1 },
                 { Card.Island, 12 },
                 { Card.Mountain, 1 },
@@ -28,26 +30,30 @@ namespace JeskaiAscendancyMCTS {
                 { Card.TreasureCruise, 2 },
             }, 7);
 
-            int decisions = 0;
-            while (!state.IsWon()) {
-                Console.WriteLine(state);
-                state.SanityCheck();
-                int[] moves = state.GetMoves();
-                Console.WriteLine(string.Join("\n", moves.Select(s => s + ": " + state.MoveToString(s))));
-                Console.WriteLine();
-                int move = int.MinValue;
-                while (!moves.Contains(move)) {
-                    if (!int.TryParse(Console.ReadLine(), out move)) move = int.MinValue;
+                int decisions = 0;
+                while (!state.IsWon() && !state.IsLost()) {
+                    //Console.WriteLine(state);
+                    state.SanityCheck();
+                    int[] moves = state.GetMoves();
+                    //Console.WriteLine(string.Join("\n", moves.Select(s => s + ": " + state.MoveToString(s))));
+                    //Console.WriteLine();
+                    int move = moves[random.Next(moves.Length)];
+                    //Console.WriteLine(state.MoveToString(move));
+                    if (moves.Length > 1) decisions++;
+                    float probability = state.ExecuteMove(move);
+                    //Console.WriteLine("Resulting state had {0}% probability.", (probability * 100).ToString("N1"));
+                    //Console.WriteLine();
                 }
-                if (moves.Length > 1) decisions++;
-                float probability = state.ExecuteMove(move);
-                Console.WriteLine("Resulting state had {0}% probability.", (probability * 100).ToString("N1"));
-                Console.WriteLine();
-            }
 
-            Console.WriteLine(state);
-            Console.WriteLine("Won on turn {0} with {1} decisions!", state.turn, decisions);
-            Console.ReadLine();
+                //Console.WriteLine(state);
+                //Console.WriteLine((state.IsWon() ? "Won" : "Lost") + " on turn {0} with {1} decisions!", state.turn, decisions);
+                if (state.IsWon()) won++;
+                else lost++;
+                int games = won + lost;
+                if (games % 100000 == 0) {
+                    Console.WriteLine((won * 100f / games).ToString("N2") + "% win rate in " + games + " games.");
+                }
+            }
         }
     }
 }

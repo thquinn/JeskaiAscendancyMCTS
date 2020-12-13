@@ -9,7 +9,7 @@ namespace JeskaiAscendancyMCTS {
     using ManaCost = Tuple<int, int, int, int>;
 
     public class State {
-        public int[] N_FACTORIAL = new int[] { 1, 1, 2, 6 };
+        public int[] N_FACTORIAL = new int[] { 1, 1, 2, 6, 24 };
         public int[][] PONDER_ORDERS = new int[][] {
             new int[]{ 0, 2, 1 },
             new int[]{ 1, 0, 2 },
@@ -126,6 +126,7 @@ namespace JeskaiAscendancyMCTS {
         }
 
         public int[] GetMoves() {
+            if (IsWon() || IsLost()) return new int[] { };
             List<int> moves;
             if (choiceDiscard > 0) {
                 int fatestitchersInHand = handQuantities[(int)Card.Fatestitcher];
@@ -149,7 +150,7 @@ namespace JeskaiAscendancyMCTS {
             }
             if (choiceScry > 0) {
                 Debug.Assert(choiceScry == 1, "Scry amounts larger than 1 not supported.");
-                return new int[] { 1, -1 };
+                return topOfDeck.Count > 0 ? new int[] { 1, -1 } : new int[] { 0 };
             }
             if (choiceTop > 0) {
                 Debug.Assert(choiceTop == 2, "Top amounts other than 2 not supported.");
@@ -166,6 +167,8 @@ namespace JeskaiAscendancyMCTS {
                 return moves.ToArray();
             }
             if (choicePonder) {
+                if (topOfDeck.Count < 2) return new int[] { 0 };
+                if (topOfDeck.Count == 2) return new int[] { 0, 1 };
                 int zero = topOfDeck[0], one = topOfDeck[1], two = topOfDeck[2];
                 if (zero == one && one == two) return new int[] { 5, 6 };
                 if (zero == one) return new int[] { 0, 3, 5, 6 };
@@ -240,8 +243,8 @@ namespace JeskaiAscendancyMCTS {
         }
         // Returns 1 for deterministic moves, and the probability of the resultant state for stochastic moves.
         public float ExecuteMove(int move) {
-            // TODO: We can't just multiply this with the probability of every event; we need to multiply by N! at the end.
             float probability = 1;
+            int events = 0;
             // Choices.
             if (choiceDiscard > 0) {
                 while (move > 0) {
@@ -268,7 +271,9 @@ namespace JeskaiAscendancyMCTS {
                 }
                 // If a spell or Ascendancy trigger(s), was waiting for a Jeskai Ascendancy discard, we can go ahead and let it resolve now.
             } else if (choiceScry > 0) {
-                if (move == -1) {
+                if (move == 0) {
+                    // Library is empty.
+                } if (move == -1) {
                     bottomOfDeck.Enqueue(topOfDeck[0]);
                     topOfDeck.RemoveAt(0);
                 }
@@ -289,7 +294,15 @@ namespace JeskaiAscendancyMCTS {
                 choiceTop = 0;
                 return 1;
             } else if (choicePonder) {
-                if (move == 6) {
+                if (topOfDeck.Count < 2) {
+                    // Deck is too small to reorder.
+                } else if (topOfDeck.Count == 2) {
+                    if (move == 1) {
+                        int zero = topOfDeck[0];
+                        topOfDeck[0] = topOfDeck[1];
+                        topOfDeck[1] = zero;
+                    }
+                } else if (move == 6) {
                     Shuffle();
                 } else if (move < 5) {
                     int[] ponderOrder = PONDER_ORDERS[move];
@@ -306,7 +319,7 @@ namespace JeskaiAscendancyMCTS {
                 if (move == 1) {
                     SpendMana(0, 1, 0, 0);
                     ascendancyTriggers += ascendancies;
-                    probability *= Draw();
+                    probability *= Draw() * ++events;
                 }
                 if (choiceObsessive == 0) {
                     if (cleanupDiscard) {
@@ -314,10 +327,10 @@ namespace JeskaiAscendancyMCTS {
                         // SIMPLIFICATION: Ignore Ascendancy triggers from cleanup-cast Obsessive Searches.
                         cleanupDiscard = false;
                         Untap();
-                        return probability * Draw();
+                        return probability * Draw() * (events + 1);
                     }
-                    if (ascendancyTriggers == 0) return 1;
-                }
+                    if (ascendancyTriggers == 0 && stack == Card.None) return 1;
+                } else return probability;
             } else if (move == SPECIAL_MOVE_END_TURN) {
                 EndStep();
                 int cardsInHand = handQuantities.Sum();
@@ -400,7 +413,7 @@ namespace JeskaiAscendancyMCTS {
             }
             // Stack resolving.
             if (ascendancyTriggers > 0) {
-                return probability * ResolveAscendancyTrigger();
+                return probability * ResolveAscendancyTrigger() * (events + 1);
             }
             Card spell = stack;
             stack = Card.None;
@@ -411,7 +424,7 @@ namespace JeskaiAscendancyMCTS {
             switch (spell) {
                 case Card.Brainstorm:
                     choiceTop = 2;
-                    return probability * Draw(3);
+                    return probability * Draw(3) * (events + 1);
                 case Card.CeruleanWisps:
                     if (tappedFatestitchers > 0) {
                         tappedFatestitchers--;
@@ -419,29 +432,29 @@ namespace JeskaiAscendancyMCTS {
                     } else {
                         UntapLands(1);
                     }
-                    return probability * Draw();
+                    return probability * Draw() * (events + 1);
                 case Card.FranticInventory:
-                    return probability * Draw(graveyardInventories);
+                    return probability * Draw(graveyardInventories) * (events + 1);
                 case Card.FranticSearch:
                     UntapLands(3);
                     choiceDiscard = 2;
-                    return probability * Draw(3);
+                    return probability * Draw(3) * (events + 1);
                 case Card.GitaxianProbe:
-                    return probability * Draw();
+                    return probability * Draw() * (events + 1);
                 case Card.JeskaiAscendancy:
                     ascendancies++;
                     return probability;
                 case Card.ObsessiveSearch:
-                    return probability * Draw();
+                    return probability * Draw() * (events + 1);
                 case Card.Opt:
                     choiceScry = 1;
                     postScryDraws = 1;
-                    return probability * RevealTop(1);
+                    return probability * RevealTop(1) * (events + 1);
                 case Card.Ponder:
                     choicePonder = true;
-                    return probability * RevealTop(3);
+                    return probability * RevealTop(3) * (events + 1);
                 case Card.TreasureCruise:
-                    return probability * Draw(3);
+                    return probability * Draw(3) * (events + 1);
                 default:
                     throw new Exception("Unhandled spell resolving: " + CARD_NAMES[stack]);
             }
@@ -482,6 +495,7 @@ namespace JeskaiAscendancyMCTS {
                 deckedOut = true;
                 return 1;
             }
+
             float totalProbability = 1;
             int topDecks = 0;
             for (int i = 0; i < n; i++) {
@@ -495,13 +509,18 @@ namespace JeskaiAscendancyMCTS {
             return totalProbability * N_FACTORIAL[topDecks];
         }
         float RevealTop(int n) {
+            n = Math.Min(n, topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count);
             float probability = 1;
             while (topOfDeck.Count < n) {
-                int i = RandomIndexFromDeck();
-                probability *= shuffledLibraryQuantities[i] / (float)shuffledLibraryCount;
-                shuffledLibraryCount--;
-                shuffledLibraryQuantities[i]--;
-                topOfDeck.Add(i);
+                if (shuffledLibraryCount == 0) {
+                    topOfDeck.Add(bottomOfDeck.Dequeue());
+                } else {
+                    int i = RandomIndexFromDeck();
+                    probability *= shuffledLibraryQuantities[i] / (float)shuffledLibraryCount;
+                    shuffledLibraryCount--;
+                    shuffledLibraryQuantities[i]--;
+                    topOfDeck.Add(i);
+                }
             }
             return probability;
         }
@@ -728,7 +747,8 @@ namespace JeskaiAscendancyMCTS {
                     }
                 }
                 sb.Append((topOfDeck.Count > 0 || bottomOfDeck.Count > 0) ? "Library (shuffled portion): " : "Library: ");
-                sb.AppendLine(string.Join(", ", tokens));
+                sb.Append(string.Join(", ", tokens));
+                sb.AppendLine(string.Format(" ({0} {1})", shuffledLibraryCount, shuffledLibraryCount == 1 ? "card" : "cards"));
                 tokens.Clear();
             }
             if (bottomOfDeck.Count > 0) {
@@ -754,6 +774,7 @@ namespace JeskaiAscendancyMCTS {
                 return string.Format("Discard {0}.", string.Join(", ", tokens));
             }
             if (choiceScry > 0) {
+                if (topOfDeck.Count == 0) return "Scry no-op (no cards in library).";
                 return string.Format("Scry {0} to the {1}.", CARD_NAMES[(Card)topOfDeck[0]], move == -1 ? "bottom" : "top");
             }
             if (choiceTop > 0) {
@@ -766,6 +787,10 @@ namespace JeskaiAscendancyMCTS {
                                            string.Format("Brainstorm: {0} on top, then {1}.", tokens[0], tokens[1]);
             }
             if (choicePonder) {
+                if (topOfDeck.Count == 0) return "Ponder: no-op (no cards in library).";
+                if (topOfDeck.Count == 1) return "Ponder: no-op (one card in library).";
+                if (topOfDeck.Count == 2) return move == 0 ? string.Format("Ponder: {0} on top, then {1}.", CARD_NAMES[(Card)topOfDeck[0]], CARD_NAMES[(Card)topOfDeck[1]]) :
+                                                             string.Format("Ponder: {0} on top, then {1}.", CARD_NAMES[(Card)topOfDeck[1]], CARD_NAMES[(Card)topOfDeck[0]]);
                 if (move == 6) return "Ponder: shuffle.";
                 int[] ponderOrder = PONDER_ORDERS[move];
                 Card zero = (Card)topOfDeck[ponderOrder[0]], one = (Card)topOfDeck[ponderOrder[1]], two = (Card)topOfDeck[ponderOrder[2]];
