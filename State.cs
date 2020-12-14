@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 namespace JeskaiAscendancyMCTS {
     using ManaCost = Tuple<int, int, int, int>;
+    using ChanceEvent = ValueTuple<int, float>;
 
     public class State {
         public int[] N_FACTORIAL = new int[] { 1, 1, 2, 6, 24 };
@@ -18,7 +19,7 @@ namespace JeskaiAscendancyMCTS {
             new int[]{ 2, 1, 0 },
             new int[]{ 0, 1, 2 }
         };
-        public static int CARD_ENUM_LENGTH = Enum.GetNames(typeof(Card)).Length;
+        static int CARD_ENUM_LENGTH = Enum.GetNames(typeof(Card)).Length;
         public static Dictionary<Card, string> CARD_NAMES = new Dictionary<Card, string>() {
             { Card.None, "NONE" },
             // lands
@@ -99,6 +100,38 @@ namespace JeskaiAscendancyMCTS {
         int postScryDraws; // We have one or more draws waiting for a scry.
         bool cleanupDiscard; // The current choiceDiscard is happening in the cleanup step.
 
+        public State(State other) {
+            turn = other.turn;
+            topOfDeck = other.topOfDeck.ToList(); // TODO: Benchmark list copying.
+            shuffledLibraryCount = other.shuffledLibraryCount;
+            shuffledLibraryQuantities = other.shuffledLibraryQuantities.Clone() as int[]; // TODO: Benchmark array copying.
+            bottomOfDeck = new Queue<int>(other.bottomOfDeck); // TODO: Benchmark queue copying.
+            deckedOut = other.deckedOut;
+            handQuantities = other.handQuantities.Clone() as int[];
+            landPlay = other.landPlay;
+            untappedLands = other.untappedLands.Clone() as int[];
+            tappedLands = other.tappedLands.Clone() as int[];
+            whiteMana = other.whiteMana;
+            blueMana = other.blueMana;
+            redMana = other.redMana;
+            ascendancies = other.ascendancies;
+            untappedFatestitchers = other.untappedFatestitchers;
+            tappedFatestitchers = other.tappedFatestitchers;
+            totalPower = other.totalPower;
+            graveyardFatestitchers = other.graveyardFatestitchers;
+            graveyardInventories = other.graveyardInventories;
+            graveyardOther = other.graveyardOther;
+            exiledCount = other.exiledCount;
+            stack = other.stack;
+            choiceDiscard = other.choiceDiscard;
+            choiceScry = other.choiceScry;
+            choiceTop = other.choiceTop;
+            choicePonder = other.choicePonder;
+            choiceObsessive = other.choiceObsessive;
+            ascendancyTriggers = other.ascendancyTriggers;
+            postScryDraws = other.postScryDraws;
+            cleanupDiscard = other.cleanupDiscard; // TODO: This is an awful lot of copying... would it be faster to bundle everything up into one array and block copy?
+        }
         public State(Dictionary<Card, int> decklist, int startingHandSize) {
             turn = 1;
             // Library.
@@ -123,6 +156,7 @@ namespace JeskaiAscendancyMCTS {
             for (int i = 0; i < startingHandSize; i++) {
                 Draw();
             }
+            // TODO: London mulligan.
         }
 
         public int[] GetMoves() {
@@ -242,9 +276,8 @@ namespace JeskaiAscendancyMCTS {
             return moves.ToArray();
         }
         // Returns 1 for deterministic moves, and the probability of the resultant state for stochastic moves.
-        public float ExecuteMove(int move) {
-            float probability = 1;
-            int events = 0;
+        public ChanceEvent ExecuteMove(int move) {
+            ChanceEvent chanceEvent = new ChanceEvent(0, 1);
             // Choices.
             if (choiceDiscard > 0) {
                 while (move > 0) {
@@ -258,15 +291,15 @@ namespace JeskaiAscendancyMCTS {
                     choiceDiscard--;
                     move /= CARD_ENUM_LENGTH;
                 }
-                if (choiceDiscard > 0) return 1; // We still have discards to make.
-                if (choiceObsessive > 0) return 1; // We have Obsessive Search triggers on the stack.
+                if (choiceDiscard > 0) return chanceEvent; // We still have discards to make.
+                if (choiceObsessive > 0) return chanceEvent; // We have Obsessive Search triggers on the stack.
                 if (choiceObsessive == 0 && ascendancyTriggers == 0 && stack == Card.None) {
                     if (cleanupDiscard) {
                         cleanupDiscard = false;
                         Untap();
                         return Draw();
                     } else {
-                        return 1;
+                        return chanceEvent;
                     }
                 }
                 // If a spell or Ascendancy trigger(s), was waiting for a Jeskai Ascendancy discard, we can go ahead and let it resolve now.
@@ -279,11 +312,11 @@ namespace JeskaiAscendancyMCTS {
                 }
                 choiceScry = 0;
                 if (postScryDraws > 0) {
-                    float output = Draw(postScryDraws);
+                    ChanceEvent output = Draw(postScryDraws);
                     postScryDraws = 0;
                     return output;
                 }
-                return 1;
+                return chanceEvent;
             } else if (choiceTop > 0) {
                 while (move > 0) {
                     int cardIndex = move % CARD_ENUM_LENGTH;
@@ -292,7 +325,7 @@ namespace JeskaiAscendancyMCTS {
                     move /= CARD_ENUM_LENGTH;
                 }
                 choiceTop = 0;
-                return 1;
+                return chanceEvent;
             } else if (choicePonder) {
                 if (topOfDeck.Count < 2) {
                     // Deck is too small to reorder.
@@ -319,25 +352,30 @@ namespace JeskaiAscendancyMCTS {
                 if (move == 1) {
                     SpendMana(0, 1, 0, 0);
                     ascendancyTriggers += ascendancies;
-                    probability *= Draw() * ++events;
+                    // SIMPLIFICATION: Since the order of multiple cards drawn doesn't matter, future draws combining with this chance event will underestimate the event's true probability.
+                    chanceEvent = Draw();
                 }
                 if (choiceObsessive == 0) {
                     if (cleanupDiscard) {
-                        // TODO: We may need to re-discard if we have > 7.
+                        int cardsInHand = handQuantities.Sum();
+                        if (cardsInHand > 7) {
+                            choiceDiscard = cardsInHand - 7;
+                            return chanceEvent;
+                        }
                         // SIMPLIFICATION: Ignore Ascendancy triggers from cleanup-cast Obsessive Searches.
                         cleanupDiscard = false;
                         Untap();
-                        return probability * Draw() * (events + 1);
+                        return CombineEvents(chanceEvent, Draw());
                     }
-                    if (ascendancyTriggers == 0 && stack == Card.None) return 1;
-                } else return probability;
+                    if (ascendancyTriggers == 0 && stack == Card.None) return chanceEvent;
+                } else return chanceEvent;
             } else if (move == SPECIAL_MOVE_END_TURN) {
                 EndStep();
                 int cardsInHand = handQuantities.Sum();
                 if (cardsInHand > 7) {
                     choiceDiscard = cardsInHand - 7;
                     cleanupDiscard = true;
-                    return 1;
+                    return chanceEvent;
                 } else {
                     Untap();
                     return Draw();
@@ -360,13 +398,13 @@ namespace JeskaiAscendancyMCTS {
                     shuffledLibraryQuantities[(int)Card.Mountain]--;
                     tappedLands[(int)Card.Mountain]++;
                 }
-                return 1;
+                return chanceEvent;
             } else if (move == SPECIAL_MOVE_UNEARTH_FATESTITCHER) {
                 SpendMana(0, 1, 0, 0);
                 graveyardFatestitchers--;
                 untappedFatestitchers++;
                 totalPower++;
-                return 1;
+                return chanceEvent;
             } else if (move < LAND_ETB_TAPPED.Length) {
                 // Play a land.
                 handQuantities[move]--;
@@ -382,7 +420,7 @@ namespace JeskaiAscendancyMCTS {
                     // Other nonbasic land.
                     (LAND_ETB_TAPPED[move] ? tappedLands : untappedLands)[move]++;
                 }
-                return 1;
+                return chanceEvent;
             } else {
                 // Cast a spell from hand.
                 handQuantities[move]--;
@@ -391,7 +429,6 @@ namespace JeskaiAscendancyMCTS {
                 if (stack == Card.TreasureCruise) {
                     // Delve.
                     // SIMPLIFICATION: Always delve the max amount, preserving Fatestitchers, then Frantic Inventories.
-                    // TODO: Treasure Cruise is currently delving itself.
                     int generic = 7;
                     int min = Math.Min(generic, graveyardOther);
                     graveyardOther -= min;
@@ -413,7 +450,7 @@ namespace JeskaiAscendancyMCTS {
             }
             // Stack resolving.
             if (ascendancyTriggers > 0) {
-                return probability * ResolveAscendancyTrigger() * (events + 1);
+                return CombineEvents(chanceEvent, ResolveAscendancyTrigger());
             }
             Card spell = stack;
             stack = Card.None;
@@ -424,7 +461,7 @@ namespace JeskaiAscendancyMCTS {
             switch (spell) {
                 case Card.Brainstorm:
                     choiceTop = 2;
-                    return probability * Draw(3) * (events + 1);
+                    return CombineEvents(chanceEvent, Draw(3));
                 case Card.CeruleanWisps:
                     if (tappedFatestitchers > 0) {
                         tappedFatestitchers--;
@@ -432,29 +469,29 @@ namespace JeskaiAscendancyMCTS {
                     } else {
                         UntapLands(1);
                     }
-                    return probability * Draw() * (events + 1);
+                    return CombineEvents(chanceEvent, Draw());
                 case Card.FranticInventory:
-                    return probability * Draw(graveyardInventories) * (events + 1);
+                    return CombineEvents(chanceEvent, Draw(graveyardInventories));
                 case Card.FranticSearch:
                     UntapLands(3);
                     choiceDiscard = 2;
-                    return probability * Draw(3) * (events + 1);
+                    return CombineEvents(chanceEvent, Draw(3));
                 case Card.GitaxianProbe:
-                    return probability * Draw() * (events + 1);
+                    return CombineEvents(chanceEvent, Draw());
                 case Card.JeskaiAscendancy:
                     ascendancies++;
-                    return probability;
+                    return chanceEvent;
                 case Card.ObsessiveSearch:
-                    return probability * Draw() * (events + 1);
+                    return CombineEvents(chanceEvent, Draw());
                 case Card.Opt:
                     choiceScry = 1;
                     postScryDraws = 1;
-                    return probability * RevealTop(1) * (events + 1);
+                    return CombineEvents(chanceEvent, RevealTop(1, false));
                 case Card.Ponder:
                     choicePonder = true;
-                    return probability * RevealTop(3) * (events + 1);
+                    return CombineEvents(chanceEvent, RevealTop(3, false));
                 case Card.TreasureCruise:
-                    return probability * Draw(3) * (events + 1);
+                    return CombineEvents(chanceEvent, Draw(3));
                 default:
                     throw new Exception("Unhandled spell resolving: " + CARD_NAMES[stack]);
             }
@@ -467,10 +504,10 @@ namespace JeskaiAscendancyMCTS {
             return deckedOut;
         }
 
-        float Draw() {
+        ChanceEvent Draw() {
             if (topOfDeck.Count == 0 && shuffledLibraryCount == 0 && bottomOfDeck.Count == 0) {
                 deckedOut = true;
-                return 1;
+                return new ChanceEvent(0, 1);
             }
             float probability;
             int i;
@@ -488,28 +525,53 @@ namespace JeskaiAscendancyMCTS {
                 shuffledLibraryQuantities[i]--;
             }
             handQuantities[i]++;
-            return probability;
+            return new ChanceEvent(i, probability);
         }
-        float Draw(int n) {
+        ChanceEvent Draw(int n) {
+            if (n == 1) return Draw();
             if (topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count < n) {
                 deckedOut = true;
-                return 1;
+                return new ChanceEvent(0, 1);
             }
 
+            int[] cardIDs = new int[n];
             float totalProbability = 1;
             int topDecks = 0;
             for (int i = 0; i < n; i++) {
-                float probability = Draw();
-                totalProbability *= probability;
-                if (probability < 1) {
+                ChanceEvent drawEvent = Draw();
+                cardIDs[i] = drawEvent.Item1;
+                totalProbability *= drawEvent.Item2;
+                if (drawEvent.Item2 < 1) {
                     topDecks++;
                 }
             }
-            // TODO: Is this probability calculation complete?
-            return totalProbability * N_FACTORIAL[topDecks];
+            Array.Sort(cardIDs);
+            int eventID = 0;
+            for (int i = 0; i < n; i++) {
+                eventID = eventID * CARD_ENUM_LENGTH + cardIDs[i];
+            }
+            return new ChanceEvent(eventID, totalProbability * N_FACTORIAL[topDecks]);
         }
-        float RevealTop(int n) {
+        ChanceEvent RevealTop(int n, bool orderMatters) {
             n = Math.Min(n, topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count);
+            if (!orderMatters && n > 1) return RevealTopNoOrder(n);
+            int eventID = 0;
+            float probability = 1;
+            while (topOfDeck.Count < n) {
+                if (shuffledLibraryCount == 0) {
+                    topOfDeck.Add(bottomOfDeck.Dequeue());
+                } else {
+                    int i = RandomIndexFromDeck();
+                    eventID = (eventID * CARD_ENUM_LENGTH) + i;
+                    probability *= shuffledLibraryQuantities[i] / (float)shuffledLibraryCount;
+                    shuffledLibraryCount--;
+                    shuffledLibraryQuantities[i]--;
+                    topOfDeck.Add(i);
+                }
+            }
+            return new ChanceEvent(eventID, probability);
+        }
+        ChanceEvent RevealTopNoOrder(int n) {
             float probability = 1;
             while (topOfDeck.Count < n) {
                 if (shuffledLibraryCount == 0) {
@@ -522,7 +584,14 @@ namespace JeskaiAscendancyMCTS {
                     topOfDeck.Add(i);
                 }
             }
-            return probability;
+            // Sort the top n cards of the deck and calculate the event ID.
+            int[] cardIDs = topOfDeck.Take(n).ToArray();
+            Array.Sort(cardIDs);
+            int eventID = 0;
+            for (int i = 0; i < n; i++) {
+                eventID = eventID * CARD_ENUM_LENGTH + cardIDs[i];
+            }
+            return new ChanceEvent(eventID, probability * N_FACTORIAL[n]);
         }
         int RandomIndexFromDeck() {
             int selector;
@@ -575,7 +644,7 @@ namespace JeskaiAscendancyMCTS {
             topOfDeck.Clear();
             bottomOfDeck.Clear();
         }
-        float ResolveAscendancyTrigger() {
+        ChanceEvent ResolveAscendancyTrigger() {
             ascendancyTriggers--;
             UntapLands(untappedFatestitchers);
             untappedFatestitchers += tappedFatestitchers;
@@ -672,6 +741,18 @@ namespace JeskaiAscendancyMCTS {
                     n--;
                 }
             }
+        }
+
+        static int[] MAX_CARD_ENUM_VALUE_POWERS = new int[] { 1, 1, CARD_ENUM_LENGTH,
+                                                                    CARD_ENUM_LENGTH * CARD_ENUM_LENGTH,
+                                                                    CARD_ENUM_LENGTH * CARD_ENUM_LENGTH * CARD_ENUM_LENGTH,
+                                                                    CARD_ENUM_LENGTH * CARD_ENUM_LENGTH * CARD_ENUM_LENGTH * CARD_ENUM_LENGTH,
+                                                                    CARD_ENUM_LENGTH * CARD_ENUM_LENGTH * CARD_ENUM_LENGTH * CARD_ENUM_LENGTH * CARD_ENUM_LENGTH };
+        static ChanceEvent CombineEvents(ChanceEvent one, ChanceEvent two) {
+            int logTwo = 0;
+            while (two.Item1 >= MAX_CARD_ENUM_VALUE_POWERS[logTwo]) logTwo++;
+            int combinedID = one.Item1 * MAX_CARD_ENUM_VALUE_POWERS[logTwo + 1] + two.Item1;
+            return new ChanceEvent(combinedID, one.Item2 * two.Item2);
         }
 
         public override string ToString() {
