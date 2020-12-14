@@ -10,7 +10,6 @@ namespace JeskaiAscendancyMCTS {
 
         static void Main(string[] args) {
             float[] rewards = new float[] { 0, 0, 0, 0, 1, .9f, .75f, .5f, .4f, .3f, .2f, .1f };
-
             State state = new State(new Dictionary<Card, int>() {
                 { Card.Plains, 1 },
                 { Card.Island, 12 },
@@ -29,8 +28,18 @@ namespace JeskaiAscendancyMCTS {
                 { Card.Ponder, 4 },
                 { Card.TreasureCruise, 2 },
             }, 7);
-            MCTS mcts = new MCTS(state, rewards);
-            mcts.Rollout(1000);
+            Console.WriteLine(state);
+            while (true) {
+                MCTS mcts = new MCTS(state, rewards);
+                mcts.Rollout(10000);
+                int bestMove = mcts.GetBestMove();
+                Console.WriteLine(state.MoveToString(bestMove));
+                Console.WriteLine();
+                state.ExecuteMove(bestMove);
+                Console.WriteLine();
+                Console.WriteLine(state);
+                Console.ReadLine();
+            }
         }
     }
 }

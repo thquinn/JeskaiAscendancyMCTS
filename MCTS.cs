@@ -15,7 +15,7 @@ namespace JeskaiAscendancyMCTS {
         static float MIN_EXPANSION_PROBABILITY = 0;
 
         MCTSChoiceNode rootNode;
-        State rootState;
+        public State rootState;
         float[] rewards;
 
         public MCTS(State rootState, float[] rewards) {
@@ -30,27 +30,21 @@ namespace JeskaiAscendancyMCTS {
             }
         }
         public void Rollout() {
-            Console.Clear();
             // Selection.
             MCTSNode current = rootNode;
             State state = new State(rootState);
-            int eventID = 0;
             float probability = 1;
             while (probability >= MIN_EXPANSION_PROBABILITY) {
-                Console.WriteLine(state);
-                if (eventID == 0) {
-                    MCTSChild child = current.GetChild();
-                    if (child.Item2 == null) break;
-                    Console.WriteLine(child.Item1);
-                    Console.WriteLine(state.MoveToString(child.Item1));
-                    ChanceEvent chanceEvent = state.ExecuteMove(child.Item1);
-                    eventID = chanceEvent.Item1;
-                    probability *= chanceEvent.Item2;
-                    current = child.Item2;
-                } else {
-                    MCTSChild child = current.GetChild(eventID, state);
-                    eventID = 0;
-                }
+                MCTSChild child = current.GetChild();
+                if (child.Item2 == null) break;
+                current = child.Item2;
+                ChanceEvent chanceEvent = state.ExecuteMove(child.Item1);
+                // Choice node.
+                if (chanceEvent.Item1 == 0) continue;
+                // Chance node.
+                probability *= chanceEvent.Item2;
+                child = current.GetChild(chanceEvent.Item1, state);
+                current = child.Item2;
             }
             // Expansion.
             current = current.Expand(state);
@@ -62,14 +56,20 @@ namespace JeskaiAscendancyMCTS {
                     i = Program.random.Next(moves.Length);
                 }
                 state.ExecuteMove(moves[i]);
-                if (state.turn > rewards.Length) break;
+                if (state.turn >= rewards.Length) {
+                    break;
+                }
             }
+            Debug.Assert(state.IsWon() || state.IsLost() || state.turn >= rewards.Length, "Simulation ended prematurely.");
             float reward = state.IsWon() ? rewards[state.turn] : 0;
             // Backpropagation.
             while (current != null) {
                 current.IncrementReward(reward);
                 current = current.parent;
             }
+        }
+        public int GetBestMove() {
+            return rootNode.GetBestMove();
         }
     }
 
@@ -87,7 +87,7 @@ namespace JeskaiAscendancyMCTS {
         }
 
         public override MCTSChild GetChild() {
-            if (expandedChildrenCount < children.Length) return new MCTSChild();
+            if (children.Length == 0 || expandedChildrenCount < children.Length) return new MCTSChild();
             double highestUCT = double.MinValue;
             int highestIndex = -1;
             double lnSimulations = Math.Log(rollouts);
@@ -118,6 +118,18 @@ namespace JeskaiAscendancyMCTS {
                 children[expandedChildrenCount++] = child;
             }
             return child;
+        }
+
+        public int GetBestMove() {
+            int mostRollouts = -1;
+            int mostIndex = -1;
+            for (int i = 0; i < expandedChildrenCount; i++) {
+                if (children[i].rollouts > mostRollouts) {
+                    mostRollouts = children[i].rollouts;
+                    mostIndex = i;
+                }
+            }
+            return moves[mostIndex];
         }
     }
     public class MCTSChanceNode : MCTSNode {
