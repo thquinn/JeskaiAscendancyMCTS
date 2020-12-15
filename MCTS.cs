@@ -34,6 +34,7 @@ namespace JeskaiAscendancyMCTS {
             MCTSNode current = rootNode;
             State state = new State(rootState);
             float probability = 1;
+            // TODO: Adjust this parameter and test.
             while (probability >= MIN_EXPANSION_PROBABILITY) {
                 MCTSChild child = current.GetChild();
                 if (child.Item2 == null) break;
@@ -51,10 +52,7 @@ namespace JeskaiAscendancyMCTS {
             // Simulation.
             while (!state.IsWon() && !state.IsLost()) {
                 int[] moves = state.GetMoves();
-                int i;
-                lock (Program.random) {
-                    i = Program.random.Next(moves.Length);
-                }
+                int i = StaticRandom.Next(moves.Length);
                 state.ExecuteMove(moves[i]);
                 if (state.turn >= rewards.Length) {
                     break;
@@ -70,11 +68,12 @@ namespace JeskaiAscendancyMCTS {
         }
         public int GetBestMove() {
             return rootNode.GetBestMove();
+            // TODO: Preserving the best move subtree.
         }
     }
 
     public class MCTSChoiceNode : MCTSNode {
-        static float EXPLORATION = (float)Math.Sqrt(2);
+        public readonly static float EXPLORATION = 0.85f;
 
         int[] moves;
         MCTSNode[] children;

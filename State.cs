@@ -10,8 +10,8 @@ namespace JeskaiAscendancyMCTS {
     using ChanceEvent = ValueTuple<int, float>;
 
     public class State {
-        public int[] N_FACTORIAL = new int[] { 1, 1, 2, 6, 24 };
-        public int[][] PONDER_ORDERS = new int[][] {
+        readonly int[] N_FACTORIAL = new int[] { 1, 1, 2, 6, 24 };
+        readonly int[][] PONDER_ORDERS = new int[][] {
             new int[]{ 0, 2, 1 },
             new int[]{ 1, 0, 2 },
             new int[]{ 1, 2, 0 },
@@ -19,8 +19,8 @@ namespace JeskaiAscendancyMCTS {
             new int[]{ 2, 1, 0 },
             new int[]{ 0, 1, 2 }
         };
-        static int CARD_ENUM_LENGTH = Enum.GetNames(typeof(Card)).Length;
-        public static Dictionary<Card, string> CARD_NAMES = new Dictionary<Card, string>() {
+        readonly static int CARD_ENUM_LENGTH = Enum.GetNames(typeof(Card)).Length;
+        readonly static Dictionary<Card, string> CARD_NAMES = new Dictionary<Card, string>() {
             { Card.None, "NONE" },
             // lands
             { Card.Plains, "Plains" },
@@ -41,7 +41,7 @@ namespace JeskaiAscendancyMCTS {
             { Card.Ponder, "Ponder" },
             { Card.TreasureCruise, "Treasure Cruise" },
         };
-        public static Dictionary<Card, ManaCost> MANA_COSTS = new Dictionary<Card, ManaCost>() {
+        readonly static Dictionary<Card, ManaCost> MANA_COSTS = new Dictionary<Card, ManaCost>() {
             { Card.Brainstorm, new ManaCost(0, 1, 0, 0) },
             { Card.CeruleanWisps, new ManaCost(0, 1, 0, 0) },
             { Card.FranticInventory, new ManaCost(0, 1, 0, 1) },
@@ -53,17 +53,18 @@ namespace JeskaiAscendancyMCTS {
             { Card.Ponder, new ManaCost(0, 1, 0, 0) },
             { Card.TreasureCruise, new ManaCost(0, 1, 0, 7) }
         };
-        public bool[] LAND_ETB_TAPPED = new bool[] { false, false, false, false, true, false }; // starting with None, then Plains
-        static int SPECIAL_MOVE_END_TURN = 0;
-        static int SPECIAL_MOVE_FETCH_PLAINS = -1;
-        static int SPECIAL_MOVE_FETCH_ISLAND = -2;
-        static int SPECIAL_MOVE_FETCH_MOUNTAIN = -3;
-        static int SPECIAL_MOVE_FETCH_FAIL_TO_FIND = -4;
-        static int SPECIAL_MOVE_UNEARTH_FATESTITCHER = -5;
+        readonly bool[] LAND_ETB_TAPPED = new bool[] { false, false, false, false, true, false }; // starting with None, then Plains
+        readonly static int SPECIAL_MOVE_END_TURN = 0;
+        readonly static int SPECIAL_MOVE_FETCH_PLAINS = -1;
+        readonly static int SPECIAL_MOVE_FETCH_ISLAND = -2;
+        readonly static int SPECIAL_MOVE_FETCH_MOUNTAIN = -3;
+        readonly static int SPECIAL_MOVE_FETCH_FAIL_TO_FIND = -4;
+        readonly static int SPECIAL_MOVE_UNEARTH_FATESTITCHER = -5;
 
         public int turn;
 
         // Library.
+        Dictionary<Card, int> decklist;
         List<int> topOfDeck;
         int shuffledLibraryCount;
         int[] shuffledLibraryQuantities;
@@ -85,7 +86,7 @@ namespace JeskaiAscendancyMCTS {
         int graveyardFatestitchers, graveyardInventories, graveyardOther;
 
         // Exile.
-        int exiledCount;
+        int exiledFatestitchers, exiledOther;
 
         // Stack.
         Card stack; // Which card is waiting for Jeskai Ascendancy trigger(s) to resolve?
@@ -101,6 +102,7 @@ namespace JeskaiAscendancyMCTS {
         bool cleanupDiscard; // The current choiceDiscard is happening in the cleanup step.
 
         public State(State other) {
+            decklist = other.decklist;
             turn = other.turn;
             topOfDeck = other.topOfDeck.ToList(); // TODO: Benchmark list copying.
             shuffledLibraryCount = other.shuffledLibraryCount;
@@ -121,7 +123,8 @@ namespace JeskaiAscendancyMCTS {
             graveyardFatestitchers = other.graveyardFatestitchers;
             graveyardInventories = other.graveyardInventories;
             graveyardOther = other.graveyardOther;
-            exiledCount = other.exiledCount;
+            exiledFatestitchers = other.exiledFatestitchers;
+            exiledOther = other.exiledOther;
             stack = other.stack;
             choiceDiscard = other.choiceDiscard;
             choiceScry = other.choiceScry;
@@ -135,6 +138,7 @@ namespace JeskaiAscendancyMCTS {
         public State(Dictionary<Card, int> decklist, int startingHandSize) {
             turn = 1;
             // Library.
+            this.decklist = decklist;
             shuffledLibraryCount = 60;
             int maxDeckCardEnumValue = decklist.Keys.Max(c => (int)c);
             shuffledLibraryQuantities = new int[maxDeckCardEnumValue + 1];
@@ -432,15 +436,15 @@ namespace JeskaiAscendancyMCTS {
                     int generic = 7;
                     int min = Math.Min(generic, graveyardOther);
                     graveyardOther -= min;
-                    exiledCount += min;
+                    exiledOther += min;
                     generic -= min;
                     min = Math.Min(generic, graveyardInventories);
                     graveyardInventories -= min;
-                    exiledCount += min;
+                    exiledOther += min;
                     generic -= min;
                     min = Math.Min(generic, graveyardFatestitchers);
                     graveyardFatestitchers -= min;
-                    exiledCount += min;
+                    exiledFatestitchers += min;
                     generic -= min;
                     SpendMana(0, 1, 0, generic);
                 } else {
@@ -501,7 +505,7 @@ namespace JeskaiAscendancyMCTS {
             return totalPower >= 20;
         }
         public bool IsLost() {
-            return deckedOut;
+            return exiledFatestitchers == decklist[Card.Fatestitcher] || deckedOut;
         }
 
         ChanceEvent Draw() {
@@ -594,10 +598,7 @@ namespace JeskaiAscendancyMCTS {
             return new ChanceEvent(eventID, probability * N_FACTORIAL[n]);
         }
         int RandomIndexFromDeck() {
-            int selector;
-            lock (Program.random) {
-                selector = Program.random.Next(shuffledLibraryCount);
-            }
+            int selector = StaticRandom.Next(shuffledLibraryCount);
             int i = 1;
             for (; selector >= shuffledLibraryQuantities[i]; i++) {
                 selector -= shuffledLibraryQuantities[i];
@@ -609,15 +610,15 @@ namespace JeskaiAscendancyMCTS {
             whiteMana = tappedLands[(int)Card.Plains];
             blueMana = tappedLands[(int)Card.Island];
             redMana = tappedLands[(int)Card.Mountain];
+            exiledFatestitchers += untappedFatestitchers;
+            exiledFatestitchers += tappedFatestitchers;
+            untappedFatestitchers = 0;
+            tappedFatestitchers = 0;
             totalPower = 0;
         }
         void Untap() {
             turn++;
             landPlay = true;
-            exiledCount += untappedFatestitchers;
-            exiledCount += tappedFatestitchers;
-            untappedFatestitchers = 0;
-            tappedFatestitchers = 0;
             // Untap only lands that produce multiple colors of mana.
             for (int i = 4; i < untappedLands.Length; i++) {
                 untappedLands[i] += tappedLands[i];
@@ -716,6 +717,7 @@ namespace JeskaiAscendancyMCTS {
         void UntapLands(int n) {
             // SIMPLIFICATION: Untap lands heuristically instead of including in the search.
             // Untap lands.
+            n = Math.Min(n, untappedLands.Sum() + tappedLands.Sum());
             int min = Math.Min(tappedLands[(int)Card.MysticMonastery], n);
             tappedLands[(int)Card.MysticMonastery] -= min;
             untappedLands[(int)Card.MysticMonastery] += min;
@@ -902,7 +904,7 @@ namespace JeskaiAscendancyMCTS {
         }
         public void SanityCheck() {
             Debug.Assert(shuffledLibraryCount == shuffledLibraryQuantities.Sum(), "Shuffled library count has not been updated correctly.");
-            int totalCards = topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count + handQuantities.Sum() + untappedLands.Sum() + tappedLands.Sum() + ascendancies + untappedFatestitchers + tappedFatestitchers + graveyardFatestitchers + graveyardInventories + graveyardOther + exiledCount;
+            int totalCards = topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count + handQuantities.Sum() + untappedLands.Sum() + tappedLands.Sum() + ascendancies + untappedFatestitchers + tappedFatestitchers + graveyardFatestitchers + graveyardInventories + graveyardOther + exiledOther;
             if (stack != Card.None) totalCards++;
             Debug.Assert(totalCards == 60, string.Format("Total cards in the state is {0}, not 60!\n{1}", totalCards, this));
         }
