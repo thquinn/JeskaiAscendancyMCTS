@@ -104,10 +104,10 @@ namespace JeskaiAscendancyMCTS {
         public State(State other) {
             decklist = other.decklist;
             turn = other.turn;
-            topOfDeck = other.topOfDeck.ToList(); // TODO: Benchmark list copying.
+            topOfDeck = other.topOfDeck.ToList();
             shuffledLibraryCount = other.shuffledLibraryCount;
-            shuffledLibraryQuantities = other.shuffledLibraryQuantities.Clone() as int[]; // TODO: Benchmark array copying.
-            bottomOfDeck = new Queue<int>(other.bottomOfDeck); // TODO: Benchmark queue copying.
+            shuffledLibraryQuantities = other.shuffledLibraryQuantities.Clone() as int[];
+            bottomOfDeck = new Queue<int>(other.bottomOfDeck);
             deckedOut = other.deckedOut;
             handQuantities = other.handQuantities.Clone() as int[];
             landPlay = other.landPlay;

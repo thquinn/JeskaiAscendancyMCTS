@@ -15,7 +15,7 @@ namespace JeskaiAscendancyMCTS {
                 int trials = 0;
                 float[] rewards = new float[] { 0, 0, 0, 0, 1, .9f, .75f, .5f, .4f, .3f, .2f, .1f };
 
-                Parallel.For(0, 400, new ParallelOptions { MaxDegreeOfParallelism = 1 }, i => {
+                Parallel.For(0, 2000, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i => {
                     int turns = RunGame();
                     lock (l) {
                         trials++;
@@ -25,6 +25,7 @@ namespace JeskaiAscendancyMCTS {
                             wins++;
                         } else {
                         }
+                        Console.WriteLine("Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", 0, (totalReward / trials).ToString("N2"), trials, rewards.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
                     }
                 });
                 Console.WriteLine("Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", 0, (totalReward / trials).ToString("N2"), trials, rewards.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
@@ -33,8 +34,6 @@ namespace JeskaiAscendancyMCTS {
 
         static int RunGame() {
             float[] rewards = new float[] { 0, 0, 0, 0, 1, .9f, .75f, .5f, .4f, .3f, .2f, .1f };
-            float totalTime = 0;
-            int calculations = 0;
 
             State state = new State(new Dictionary<Card, int>() {
                 { Card.Plains, 1 },
@@ -54,8 +53,6 @@ namespace JeskaiAscendancyMCTS {
                 { Card.Ponder, 4 },
                 { Card.TreasureCruise, 2 },
             }, 7);
-            Console.WriteLine(state);
-            Console.WriteLine();
             while (!state.IsWon() && !state.IsLost() && state.turn < rewards.Length) {
                 int[] moves = state.GetMoves();
                 int move;
@@ -63,15 +60,10 @@ namespace JeskaiAscendancyMCTS {
                     move = moves[0];
                 } else {
                     MCTS mcts = new MCTS(state, rewards);
-                    Stopwatch stopwatch = new Stopwatch();
-                    stopwatch.Start();
-                    mcts.Rollout(100000);
-                    stopwatch.Stop();
-                    totalTime += stopwatch.ElapsedMilliseconds;
-                    calculations++;
-                    Console.WriteLine("Average for 100000 rollouts: {0} ms.", totalTime / calculations);
+                    mcts.Rollout(10000);
                     move = mcts.GetBestMove();
                 }
+                state.ExecuteMove(move);
             }
             if (state.IsWon()) {
                 return state.turn;
