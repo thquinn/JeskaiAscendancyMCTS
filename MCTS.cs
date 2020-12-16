@@ -66,16 +66,25 @@ namespace JeskaiAscendancyMCTS {
                 current = current.parent;
             }
         }
-        public int GetBestMove() {
-            return rootNode.GetBestMove();
-            // TODO: Preserving the best move subtree.
+        public string Advance() {
+            // Replace the current root node with the best choice node child.
+            (int, MCTSNode) best = rootNode.GetBestChild();
+            string moveString = rootState.MoveToString(best.Item1);
+            ChanceEvent chanceEvent = rootState.ExecuteMove(best.Item1);
+            rootNode = (chanceEvent.Item1 == 0 ? best.Item2 : best.Item2.GetChild(chanceEvent.Item1, rootState).Item2) as MCTSChoiceNode;
+            // While the new root node has only one move, make it.
+            while (rootNode.moves.Length == 1) {
+                rootState.ExecuteMove(rootNode.moves[0]);
+                rootNode = new MCTSChoiceNode(null, rootState.GetMoves());
+            }
+            return moveString;
         }
     }
 
     public class MCTSChoiceNode : MCTSNode {
         public readonly static float EXPLORATION = 0.85f;
 
-        int[] moves;
+        public int[] moves;
         MCTSNode[] children;
         int expandedChildrenCount;
 
@@ -119,7 +128,7 @@ namespace JeskaiAscendancyMCTS {
             return child;
         }
 
-        public int GetBestMove() {
+        public (int, MCTSNode) GetBestChild() {
             int mostRollouts = -1;
             int mostIndex = -1;
             for (int i = 0; i < expandedChildrenCount; i++) {
@@ -128,7 +137,7 @@ namespace JeskaiAscendancyMCTS {
                     mostIndex = i;
                 }
             }
-            return moves[mostIndex];
+            return (moves[mostIndex], children[mostIndex]);
         }
     }
     public class MCTSChanceNode : MCTSNode {
