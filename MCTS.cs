@@ -66,18 +66,27 @@ namespace JeskaiAscendancyMCTS {
                 current = current.parent;
             }
         }
-        public string Advance() {
+        public float ExpectedRewardOfBestChild() {
+            (int, MCTSNode) best = rootNode.GetBestChild();
+            return best.Item2.totalReward / best.Item2.rollouts;
+        }
+        public void Advance(List<string> moveStrings = null) {
             // Replace the current root node with the best choice node child.
             (int, MCTSNode) best = rootNode.GetBestChild();
-            string moveString = rootState.MoveToString(best.Item1);
+            if (moveStrings != null) {
+                moveStrings.Add(rootState.MoveToString(best.Item1));
+            }
             ChanceEvent chanceEvent = rootState.ExecuteMove(best.Item1);
             rootNode = (chanceEvent.Item1 == 0 ? best.Item2 : best.Item2.GetChild(chanceEvent.Item1, rootState).Item2) as MCTSChoiceNode;
             // While the new root node has only one move, make it.
             while (rootNode.moves.Length == 1) {
+                if (moveStrings != null) {
+                    moveStrings.Add(rootState.MoveToString(rootNode.moves[0]));
+                }
                 rootState.ExecuteMove(rootNode.moves[0]);
+                // We could go through the proper chance node and find our subtree, but it's not likely to have many rollouts. Let's just start fresh. Whatever.
                 rootNode = new MCTSChoiceNode(null, rootState.GetMoves());
             }
-            return moveString;
         }
     }
 
@@ -90,8 +99,8 @@ namespace JeskaiAscendancyMCTS {
 
         public MCTSChoiceNode(MCTSNode parent, int[] moves) {
             this.parent = parent;
-            this.moves = moves;
-            children = new MCTSNode[moves.Length].Shuffle();
+            this.moves = moves.Shuffle();
+            children = new MCTSNode[moves.Length];
         }
 
         public override MCTSChild GetChild() {

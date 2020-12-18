@@ -95,6 +95,7 @@ namespace JeskaiAscendancyMCTS {
         int choiceDiscard; // Discard N cards.
         int choiceScry; // Scry the top N cards.
         int choiceTop; // Top N cards with Brainstorm.
+        int choiceBottom; // Bottom N cards after London mulligan.
         bool choicePonder; // Reorder top 3 cards or shuffle.
         int choiceObsessive; // N Obsessive Searches were discarded: pay U to draw a card?
         int ascendancyTriggers; // We have one or more Ascendancy triggers waiting to trigger after we float mana.
@@ -129,6 +130,7 @@ namespace JeskaiAscendancyMCTS {
             choiceDiscard = other.choiceDiscard;
             choiceScry = other.choiceScry;
             choiceTop = other.choiceTop;
+            choiceBottom = other.choiceBottom;
             choicePonder = other.choicePonder;
             choiceObsessive = other.choiceObsessive;
             ascendancyTriggers = other.ascendancyTriggers;
@@ -157,10 +159,10 @@ namespace JeskaiAscendancyMCTS {
 
             // Draw opening hand.
             // SIMPLIFICATION: Mulligans aren't part of the game tree, instead performed with meta-analysis.
-            for (int i = 0; i < startingHandSize; i++) {
+            for (int i = 0; i < 7; i++) {
                 Draw();
             }
-            // TODO: London mulligan.
+            choiceBottom = Math.Max(0, 7 - startingHandSize);
         }
 
         public int[] GetMoves() {
@@ -174,7 +176,7 @@ namespace JeskaiAscendancyMCTS {
                     return handQuantities.Select((n, i) => { return n > 0 ? i : 0; }).Where(n => n != 0).ToArray();
                 }
                 if (fatestitchersInHand >= 2) return new int[] { (int)Card.Fatestitcher * CARD_ENUM_LENGTH + (int)Card.Fatestitcher };
-                moves = new List<int>();
+                moves = new List<int>(4);
                 for (int i = 1; i < handQuantities.Length; i++) {
                     if (handQuantities[i] == 0) continue;
                     if (handQuantities[i] >= 2) moves.Add(i * CARD_ENUM_LENGTH + i);
@@ -191,13 +193,19 @@ namespace JeskaiAscendancyMCTS {
                 return topOfDeck.Count > 0 ? new int[] { 1, -1 } : new int[] { 0 };
             }
             if (choiceTop > 0) {
-                Debug.Assert(choiceTop == 2, "Top amounts other than 2 not supported.");
-                moves = new List<int>();
+                return handQuantities.Select((n, i) => { return n > 0 ? i : 0; }).Where(n => n != 0).ToArray();
+            }
+            if (choiceBottom > 0) {
+                if (choiceDiscard == 1 || choiceDiscard > 2) {
+                    // If we're bottoming more than two cards, do them one at a time for better tree structure.
+                    return handQuantities.Select((n, i) => { return n > 0 ? i : 0; }).Where(n => n != 0).ToArray();
+                }
+                moves = new List<int>(4);
                 for (int i = 1; i < handQuantities.Length; i++) {
                     if (handQuantities[i] == 0) continue;
                     if (handQuantities[i] >= 2) moves.Add(i * CARD_ENUM_LENGTH + i);
-                    for (int j = 1; j < handQuantities.Length; j++) {
-                        if (i == j) continue;
+                    // SIMPLIFICATION: Don't care about the order we bottom cards.
+                    for (int j = i + 1; j < handQuantities.Length; j++) {
                         if (handQuantities[j] == 0) continue;
                         moves.Add(i * CARD_ENUM_LENGTH + j);
                     }
@@ -218,7 +226,8 @@ namespace JeskaiAscendancyMCTS {
                 return GetMaxBlueMana().Item1 > 0 ? new int[] { 0, 1 } : new int[] { 0 };
             }
             // Playing lands and casting spells.
-            moves = new List<int>();
+            moves = new List<int>(4);
+            int totalMana = whiteMana + blueMana + redMana + untappedLands.Sum();
             Tuple<int, int> maxBlue = GetMaxBlueMana();
             bool wur = HaveWURMana();
             for (int i = landPlay ? 1 : LAND_ETB_TAPPED.Length; i < handQuantities.Length; i++) {
@@ -310,7 +319,8 @@ namespace JeskaiAscendancyMCTS {
             } else if (choiceScry > 0) {
                 if (move == 0) {
                     // Library is empty.
-                } if (move == -1) {
+                }
+                if (move == -1) {
                     bottomOfDeck.Enqueue(topOfDeck[0]);
                     topOfDeck.RemoveAt(0);
                 }
@@ -322,13 +332,18 @@ namespace JeskaiAscendancyMCTS {
                 }
                 return chanceEvent;
             } else if (choiceTop > 0) {
+                handQuantities[move]--;
+                topOfDeck.Insert(0, move);
+                choiceTop--;
+                return chanceEvent;
+            } else if (choiceBottom > 0) {
                 while (move > 0) {
                     int cardIndex = move % CARD_ENUM_LENGTH;
                     handQuantities[cardIndex]--;
-                    topOfDeck.Insert(0, cardIndex);
+                    bottomOfDeck.Enqueue(cardIndex);
                     move /= CARD_ENUM_LENGTH;
+                    choiceBottom--;
                 }
-                choiceTop = 0;
                 return chanceEvent;
             } else if (choicePonder) {
                 if (topOfDeck.Count < 2) {
@@ -502,6 +517,7 @@ namespace JeskaiAscendancyMCTS {
         }
 
         public bool IsWon() {
+            // SIMPLIFICATION: If we've gone off to the point of having 20 power of Fatestitchers, we can presumably tap down any blockers and win...?
             return totalPower >= 20;
         }
         public bool IsLost() {
@@ -680,7 +696,7 @@ namespace JeskaiAscendancyMCTS {
             SpendMana(1, blue);
             SpendMana(2, red);
             if (generic == 0) return;
-            // TODO: Saving mana for Jeskai Ascendancy.
+            // TODO: Saving mana for Jeskai Ascendancy if in hand, or if we already have a ton of blue mana.
             bool saveForAscendancy = false;// ascendancies == 0 && handQuantities[(int)Card.JeskaiAscendancy] > 0 && HaveWURMana();
             if (!saveForAscendancy) {
                 generic = SpendMana(0, generic);
@@ -861,13 +877,10 @@ namespace JeskaiAscendancyMCTS {
                 return string.Format("Scry {0} to the {1}.", CARD_NAMES[(Card)topOfDeck[0]], move == -1 ? "bottom" : "top");
             }
             if (choiceTop > 0) {
-                List<string> tokens = new List<string>();
-                while (move > 0) {
-                    tokens.Insert(0, CARD_NAMES[(Card)(move % CARD_ENUM_LENGTH)]);
-                    move /= CARD_ENUM_LENGTH;
-                }
-                return tokens.Count == 1 ? string.Format("Brainstorm: {0} on top.", tokens[0]) :
-                                           string.Format("Brainstorm: {0} on top, then {1}.", tokens[0], tokens[1]);
+                return string.Format("Brainstorm: {0} on top.", CARD_NAMES[(Card)move]);
+            }
+            if (choiceBottom > 0) {
+                return string.Format("London mulligan: {0} on bottom.", CARD_NAMES[(Card)move]);
             }
             if (choicePonder) {
                 if (topOfDeck.Count == 0) return "Ponder: no-op (no cards in library).";
