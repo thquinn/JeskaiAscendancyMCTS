@@ -2,31 +2,37 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace JeskaiAscendancyMCTS {
-    using ManaCost = Tuple<int, int, int, int>;
+    using ManaCost = Tuple<int, int, int, int, int>;
     using ChanceEvent = ValueTuple<int, float>;
 
     public class State {
-        readonly int[] N_FACTORIAL = new int[] { 1, 1, 2, 6, 24 };
-        readonly int[][] PONDER_ORDERS = new int[][] {
-            new int[]{ 0, 2, 1 },
-            new int[]{ 1, 0, 2 },
-            new int[]{ 1, 2, 0 },
-            new int[]{ 2, 0, 1 },
-            new int[]{ 2, 1, 0 },
-            new int[]{ 0, 1, 2 }
+        static readonly int[] N_FACTORIAL = new int[] { 1, 1, 2, 6, 24 };
+        static readonly int[][] PONDER_ORDERS = new int[][] {
+            new int[] { 0, 2, 1 },
+            new int[] { 1, 0, 2 },
+            new int[] { 1, 2, 0 },
+            new int[] { 2, 0, 1 },
+            new int[] { 2, 1, 0 },
+            new int[] { 0, 1, 2 }
         };
-        readonly static int CARD_ENUM_LENGTH = Enum.GetNames(typeof(Card)).Length;
-        readonly static Dictionary<Card, string> CARD_NAMES = new Dictionary<Card, string>() {
+        static readonly int CARD_ENUM_LENGTH = Enum.GetNames(typeof(Card)).Length;
+        static readonly Dictionary<Card, string> CARD_NAMES = new Dictionary<Card, string>() {
             { Card.None, "NONE" },
             // lands
             { Card.Plains, "Plains" },
             { Card.Island, "Island" },
             { Card.Mountain, "Mountain" },
+            { Card.Forest, "Forest" },
+            { Card.IzzetBoilerworks, "Izzet Boilerworks" },
+            { Card.MeanderingRiver, "Meandering River" },
+            { Card.HighlandLake, "Highland Lake" },
             { Card.MysticMonastery, "Mystic Monastery" },
+            { Card.VividCreek, "Vivid Creek" },
             { Card.EvolvingWilds, "Evolving Wilds" },
             // spells
             { Card.Brainstorm, "Brainstorm" },
@@ -41,25 +47,40 @@ namespace JeskaiAscendancyMCTS {
             { Card.Ponder, "Ponder" },
             { Card.TreasureCruise, "Treasure Cruise" },
         };
-        readonly static Dictionary<Card, ManaCost> MANA_COSTS = new Dictionary<Card, ManaCost>() {
-            { Card.Brainstorm, new ManaCost(0, 1, 0, 0) },
-            { Card.CeruleanWisps, new ManaCost(0, 1, 0, 0) },
-            { Card.FranticInventory, new ManaCost(0, 1, 0, 1) },
-            { Card.FranticSearch, new ManaCost(0, 1, 0, 2) },
-            { Card.GitaxianProbe, new ManaCost(0, 0, 0, 0) }, // SIMPLIFICATION: Always pay life for Gitaxian Probe.
-            { Card.JeskaiAscendancy, new ManaCost(1, 1, 1, 0) },
-            { Card.ObsessiveSearch, new ManaCost(0, 1, 0, 0) },
-            { Card.Opt, new ManaCost(0, 1, 0, 0) },
-            { Card.Ponder, new ManaCost(0, 1, 0, 0) },
-            { Card.TreasureCruise, new ManaCost(0, 1, 0, 7) }
+        // TODO: Make both of these into arrays.
+        static readonly Dictionary<Card, ManaCost> MANA_COSTS = new Dictionary<Card, ManaCost>() {
+            // white, blue, red, green, generic
+            { Card.Brainstorm, new ManaCost(0, 1, 0, 0, 0) },
+            { Card.CeruleanWisps, new ManaCost(0, 1, 0, 0, 0) },
+            { Card.FranticInventory, new ManaCost(0, 1, 0, 0, 1) },
+            { Card.FranticSearch, new ManaCost(0, 1, 0, 0, 2) },
+            { Card.GitaxianProbe, new ManaCost(0, 0, 0, 0, 0) }, // SIMPLIFICATION: Always pay life for Gitaxian Probe.
+            { Card.JeskaiAscendancy, new ManaCost(1, 1, 1, 0, 0) },
+            { Card.ObsessiveSearch, new ManaCost(0, 1, 0, 0, 0) },
+            { Card.Opt, new ManaCost(0, 1, 0, 0, 0) },
+            { Card.Ponder, new ManaCost(0, 1, 0, 0, 0) },
+            { Card.TreasureCruise, new ManaCost(0, 1, 0, 0, 7) }
         };
-        readonly bool[] LAND_ETB_TAPPED = new bool[] { false, false, false, false, true, false }; // starting with None, then Plains
-        readonly static int SPECIAL_MOVE_END_TURN = 0;
-        readonly static int SPECIAL_MOVE_FETCH_PLAINS = -1;
-        readonly static int SPECIAL_MOVE_FETCH_ISLAND = -2;
-        readonly static int SPECIAL_MOVE_FETCH_MOUNTAIN = -3;
-        readonly static int SPECIAL_MOVE_FETCH_FAIL_TO_FIND = -4;
-        readonly static int SPECIAL_MOVE_UNEARTH_FATESTITCHER = -5;
+        static readonly Dictionary<Card, int> CONVERTED_MANA_COSTS = new Dictionary<Card, int>() {
+            { Card.Brainstorm, 1 },
+            { Card.CeruleanWisps, 1 },
+            { Card.FranticInventory, 2 },
+            { Card.FranticSearch, 3 },
+            { Card.GitaxianProbe, 0 },
+            { Card.JeskaiAscendancy, 3 },
+            { Card.ObsessiveSearch, 1 },
+            { Card.Opt, 1 },
+            { Card.Ponder, 1 },
+            { Card.TreasureCruise, 8 }
+        };
+        readonly bool[] LAND_ETB_TAPPED = new bool[] { false, false, false, false, false, true, true, true, true, true, false }; // starting with None, then Plains
+        static readonly int SPECIAL_MOVE_END_TURN = 0;
+        static readonly int SPECIAL_MOVE_FETCH_PLAINS = -1;
+        static readonly int SPECIAL_MOVE_FETCH_ISLAND = -2;
+        static readonly int SPECIAL_MOVE_FETCH_MOUNTAIN = -3;
+        static readonly int SPECIAL_MOVE_FETCH_FOREST = -4;
+        static readonly int SPECIAL_MOVE_FETCH_FAIL_TO_FIND = -5;
+        static readonly int SPECIAL_MOVE_UNEARTH_FATESTITCHER = -6;
 
         public int turn;
 
@@ -77,7 +98,8 @@ namespace JeskaiAscendancyMCTS {
         // Battlefield.
         bool landPlay;
         int[] untappedLands, tappedLands;
-        int whiteMana, blueMana, redMana;
+        int whiteMana, blueMana, redMana, greenMana;
+        int vividCounters; // SIMPLIFICATION: Count the total number of charge counters on vivid lands.
         int ascendancies;
         int untappedFatestitchers, tappedFatestitchers;
         int totalPower;
@@ -92,6 +114,7 @@ namespace JeskaiAscendancyMCTS {
         Card stack; // Which card is waiting for Jeskai Ascendancy trigger(s) to resolve?
 
         // Choices.
+        bool choiceBounce; // Bounce a land.
         int choiceDiscard; // Discard N cards.
         int choiceScry; // Scry the top N cards.
         int choiceTop; // Top N cards with Brainstorm.
@@ -117,6 +140,8 @@ namespace JeskaiAscendancyMCTS {
             whiteMana = other.whiteMana;
             blueMana = other.blueMana;
             redMana = other.redMana;
+            greenMana = other.greenMana;
+            vividCounters = other.vividCounters;
             ascendancies = other.ascendancies;
             untappedFatestitchers = other.untappedFatestitchers;
             tappedFatestitchers = other.tappedFatestitchers;
@@ -127,6 +152,7 @@ namespace JeskaiAscendancyMCTS {
             exiledFatestitchers = other.exiledFatestitchers;
             exiledOther = other.exiledOther;
             stack = other.stack;
+            choiceBounce = other.choiceBounce;
             choiceDiscard = other.choiceDiscard;
             choiceScry = other.choiceScry;
             choiceTop = other.choiceTop;
@@ -165,9 +191,27 @@ namespace JeskaiAscendancyMCTS {
             choiceBottom = Math.Max(0, 7 - startingHandSize);
         }
 
+        // TODO: Create readonly static versions of the preset int arrays in here, then benchmark.
         public int[] GetMoves() {
-            if (IsWon() || IsLost()) return new int[] { };
+            if (IsWon() || IsLost()) return new int[0];
             List<int> moves;
+            if (choiceBounce) {
+                moves = new List<int>();
+                bool firstTapped = true;
+                for (int i = 1; i < untappedLands.Length; i++) {
+                    if (firstTapped && LAND_ETB_TAPPED[i]) {
+                        // Prioritize bouncing ETB-untapped lands.
+                        if (moves.Count > 0) return moves.ToArray();
+                        firstTapped = false;
+                    }
+                    if (i == (int)Card.IzzetBoilerworks) continue;
+                    if (untappedLands[i] > 0 || tappedLands[i] > 0) {
+                        moves.Add(i);
+                    }
+                }
+                Debug.Assert(moves.Count > 0, "Found no valid lands to bounce.");
+                return moves.ToArray();
+            }
             if (choiceDiscard > 0) {
                 int fatestitchersInHand = handQuantities[(int)Card.Fatestitcher];
                 if (choiceDiscard == 1 || choiceDiscard > 2) {
@@ -196,7 +240,7 @@ namespace JeskaiAscendancyMCTS {
                 return handQuantities.Select((n, i) => { return n > 0 ? i : 0; }).Where(n => n != 0).ToArray();
             }
             if (choiceBottom > 0) {
-                if (choiceDiscard == 1 || choiceDiscard > 2) {
+                if (choiceBottom == 1 || choiceBottom > 2) {
                     // If we're bottoming more than two cards, do them one at a time for better tree structure.
                     return handQuantities.Select((n, i) => { return n > 0 ? i : 0; }).Where(n => n != 0).ToArray();
                 }
@@ -223,19 +267,18 @@ namespace JeskaiAscendancyMCTS {
                 return new int[] { 0, 1, 2, 3, 4, 5, 6 };
             }
             if (choiceObsessive > 0) {
-                return GetMaxBlueMana().Item1 > 0 ? new int[] { 0, 1 } : new int[] { 0 };
+                return Pay(new ManaCost(0, 1, 0, 0, 0)) ? new int[] { 0, 1 } : new int[] { 0 };
             }
             // Playing lands and casting spells.
             moves = new List<int>(4);
-            int totalMana = whiteMana + blueMana + redMana + untappedLands.Sum();
-            Tuple<int, int> maxBlue = GetMaxBlueMana();
-            bool wur = HaveWURMana();
+            int totalMana = whiteMana + blueMana + redMana + greenMana + untappedLands.Sum();
             for (int i = landPlay ? 1 : LAND_ETB_TAPPED.Length; i < handQuantities.Length; i++) {
                 if (handQuantities[i] == 0) {
                     continue;
                 }
                 Card card = (Card)i;
                 if (card == Card.CeruleanWisps && untappedFatestitchers == 0 && tappedFatestitchers == 0) {
+                    // No target.
                     continue;
                 }
                 if (card == Card.EvolvingWilds) {
@@ -252,6 +295,10 @@ namespace JeskaiAscendancyMCTS {
                         moves.Add(SPECIAL_MOVE_FETCH_MOUNTAIN);
                         canFetch = true;
                     }
+                    if (shuffledLibraryQuantities[(int)Card.Forest] > 0 || topOfDeck.Contains((int)Card.Forest) || bottomOfDeck.Contains((int)Card.Forest)) {
+                        moves.Add(SPECIAL_MOVE_FETCH_FOREST);
+                        canFetch = true;
+                    }
                     if (!canFetch) {
                         // SIMPLIFICATION: Can only fail to find when no basics remain to fetch.
                         moves.Add(SPECIAL_MOVE_FETCH_FAIL_TO_FIND);
@@ -262,26 +309,30 @@ namespace JeskaiAscendancyMCTS {
                     // SIMPLIFICATION: No hardcast Fatestitchers.
                     continue;
                 }
-                if (card == Card.TreasureCruise) {
-                    int genericWithDelve = maxBlue.Item2 + graveyardFatestitchers + graveyardInventories + graveyardOther;
-                    if (maxBlue.Item1 < 1 || (maxBlue.Item1 + genericWithDelve) < 8) continue;
-                    moves.Add((int)Card.TreasureCruise);
+                if (card == Card.IzzetBoilerworks) {
+                    for (int j = 1; j < untappedLands.Length; j++) {
+                        if (j == (int)Card.IzzetBoilerworks) continue;
+                        if (untappedLands[j] > 0 || tappedLands[j] > 0) {
+                            moves.Add((int)Card.IzzetBoilerworks);
+                            break;
+                        }
+                    }
                     continue;
                 }
-                if (i >= LAND_ETB_TAPPED.Length) {
-                    // Normal mana costs.
-                    ManaCost cost = MANA_COSTS[card];
-                    if (cost.Item1 > 0) {
-                        // Jeskai Ascendancy.
-                        // TODO: A more generic solution when we have nonblue cards other than Jeskai Ascendancy.
-                        if (!wur) continue;
-                    } else {
-                        if (maxBlue.Item1 < cost.Item2 || (maxBlue.Item1 + maxBlue.Item2) < (cost.Item2 + cost.Item4)) continue;
+                if (card == Card.TreasureCruise) {
+                    int totalCost = 8 - graveyardFatestitchers - graveyardInventories - graveyardOther;
+                    if (totalCost > totalMana) {
+                        continue;
                     }
+                }
+                // If the card is a spell, make sure we can pay its cost.
+                // TODO: Don't call Pay with the exact same cost multiple times in this function.
+                if (i >= LAND_ETB_TAPPED.Length && (CONVERTED_MANA_COSTS[card] > totalMana || !Pay(MANA_COSTS[card]))) {
+                    continue;
                 }
                 moves.Add(i);
             }
-            if (ascendancies > 0 && graveyardFatestitchers > 0 && maxBlue.Item1 > 0) {
+            if (ascendancies > 0 && graveyardFatestitchers > 0 && Pay(new ManaCost(0, 1, 0, 0, 0))) {
                 // SIMPLIFICATION: Only unearth Fatestitchers with at least one Jeskai Ascendancy in play. They can otherwise be used to fix, but it's marginal.
                 moves.Add(SPECIAL_MOVE_UNEARTH_FATESTITCHER);
             }
@@ -292,7 +343,13 @@ namespace JeskaiAscendancyMCTS {
         public ChanceEvent ExecuteMove(int move) {
             ChanceEvent chanceEvent = new ChanceEvent(0, 1);
             // Choices.
-            if (choiceDiscard > 0) {
+            if (choiceBounce) {
+                // TODO: Float mana if bouncing untapped land.
+                (tappedLands[move] > 0 ? tappedLands : untappedLands)[move]--;
+                handQuantities[move]++;
+                choiceBounce = false;
+                return chanceEvent;
+            } else if (choiceDiscard > 0) {
                 while (move > 0) {
                     int cardIndex = move % CARD_ENUM_LENGTH;
                     Card card = (Card)cardIndex;
@@ -369,7 +426,7 @@ namespace JeskaiAscendancyMCTS {
                 // SIMPLIFICATION: Resolve all madnessed Obsessive Searches before all Ascendancy triggers, even though in reality they can be interleaved.
                 choiceObsessive--;
                 if (move == 1) {
-                    SpendMana(0, 1, 0, 0);
+                    Pay(new ManaCost(0, 1, 0, 0, 0), true);
                     ascendancyTriggers += ascendancies;
                     // SIMPLIFICATION: Since the order of multiple cards drawn doesn't matter, future draws combining with this chance event will underestimate the event's true probability.
                     chanceEvent = Draw();
@@ -399,7 +456,7 @@ namespace JeskaiAscendancyMCTS {
                     Untap();
                     return Draw();
                 }
-            } else if (move == SPECIAL_MOVE_FETCH_PLAINS || move == SPECIAL_MOVE_FETCH_ISLAND || move == SPECIAL_MOVE_FETCH_MOUNTAIN || move == SPECIAL_MOVE_FETCH_FAIL_TO_FIND) {
+            } else if (move == SPECIAL_MOVE_FETCH_PLAINS || move == SPECIAL_MOVE_FETCH_ISLAND || move == SPECIAL_MOVE_FETCH_MOUNTAIN || move == SPECIAL_MOVE_FETCH_FOREST || move == SPECIAL_MOVE_FETCH_FAIL_TO_FIND) {
                 Shuffle();
                 landPlay = false;
                 handQuantities[(int)Card.EvolvingWilds]--;
@@ -416,10 +473,14 @@ namespace JeskaiAscendancyMCTS {
                     shuffledLibraryCount--;
                     shuffledLibraryQuantities[(int)Card.Mountain]--;
                     tappedLands[(int)Card.Mountain]++;
+                } else if (move == SPECIAL_MOVE_FETCH_FOREST) {
+                    shuffledLibraryCount--;
+                    shuffledLibraryQuantities[(int)Card.Forest]--;
+                    tappedLands[(int)Card.Forest]++;
                 }
                 return chanceEvent;
             } else if (move == SPECIAL_MOVE_UNEARTH_FATESTITCHER) {
-                SpendMana(0, 1, 0, 0);
+                Pay(new ManaCost(0, 1, 0, 0, 0), true);
                 graveyardFatestitchers--;
                 untappedFatestitchers++;
                 totalPower++;
@@ -429,15 +490,21 @@ namespace JeskaiAscendancyMCTS {
                 handQuantities[move]--;
                 landPlay = false;
                 Card land = (Card)move;
-                if (move <= 3) {
+                if (move <= 4) {
                     // Basic land.
                     tappedLands[move]++;
                     if (land == Card.Plains) whiteMana++;
                     else if (land == Card.Island) blueMana++;
-                    else redMana++;
+                    else if (land == Card.Mountain) redMana++;
+                    else greenMana++;
                 } else {
-                    // Other nonbasic land.
+                    // Nonbasic land.
                     (LAND_ETB_TAPPED[move] ? tappedLands : untappedLands)[move]++;
+                    if (land == Card.IzzetBoilerworks) {
+                        choiceBounce = true;
+                    } else if (land == Card.VividCreek) {
+                        vividCounters += 2;
+                    }
                 }
                 return chanceEvent;
             } else {
@@ -461,10 +528,10 @@ namespace JeskaiAscendancyMCTS {
                     graveyardFatestitchers -= min;
                     exiledFatestitchers += min;
                     generic -= min;
-                    SpendMana(0, 1, 0, generic);
+                    Pay(new ManaCost(0, 1, 0, 0, generic), true);
                 } else {
                     ManaCost cost = MANA_COSTS[stack];
-                    SpendMana(cost.Item1, cost.Item2, cost.Item3, cost.Item4);
+                    Pay(cost, true);
                 }
             }
             // Stack resolving.
@@ -624,8 +691,9 @@ namespace JeskaiAscendancyMCTS {
 
         void EndStep() {
             whiteMana = tappedLands[(int)Card.Plains];
-            blueMana = tappedLands[(int)Card.Island];
-            redMana = tappedLands[(int)Card.Mountain];
+            blueMana = tappedLands[(int)Card.Island] + tappedLands[(int)Card.IzzetBoilerworks];
+            redMana = tappedLands[(int)Card.Mountain] + tappedLands[(int)Card.IzzetBoilerworks];
+            greenMana = tappedLands[(int)Card.Forest];
             exiledFatestitchers += untappedFatestitchers;
             exiledFatestitchers += tappedFatestitchers;
             untappedFatestitchers = 0;
@@ -635,8 +703,8 @@ namespace JeskaiAscendancyMCTS {
         void Untap() {
             turn++;
             landPlay = true;
-            // Untap only lands that produce multiple colors of mana.
-            for (int i = 4; i < untappedLands.Length; i++) {
+            // Untap only lands with a choice of mana to produce.
+            for (int i = 6; i < untappedLands.Length; i++) {
                 untappedLands[i] += tappedLands[i];
                 tappedLands[i] = 0;
             }
@@ -671,94 +739,360 @@ namespace JeskaiAscendancyMCTS {
             return Draw(); // SIMPLIFICATION: Always loot.
         }
 
-        Tuple<int, int> GetMaxBlueMana() {
-            int blue = blueMana + untappedLands[(int)Card.MysticMonastery];
-            int generic = whiteMana + redMana;
-            if (blue > 0 || tappedLands[(int)Card.Island] > 0 || tappedLands[(int)Card.MysticMonastery] > 0) {
-                blue += untappedFatestitchers;
-            } else if (generic > 0) {
-                generic += untappedFatestitchers;
+        static readonly Card[] AUTOTAP_NONBLUE = new Card[] { };
+        static readonly Card[] AUTOTAP_MONOWHITE = new Card[] { Card.MeanderingRiver, Card.MysticMonastery, Card.VividCreek };
+        static readonly Card[] AUTOTAP_MONOBLUE = new Card[] { Card.MeanderingRiver, Card.HighlandLake, Card.MysticMonastery, Card.VividCreek };
+        static readonly Card[] AUTOTAP_MONORED = new Card[] { Card.HighlandLake, Card.MysticMonastery, Card.VividCreek };
+        static readonly Card[] AUTOTAP_UW_U = new Card[] { Card.HighlandLake }; // Manual-tap lands that produce blue, but not white.
+        static readonly Card[] AUTOTAP_UW_W = new Card[] { };
+        static readonly Card[] AUTOTAP_WU_BOTH = new Card[] { Card.MeanderingRiver, Card.MysticMonastery, Card.VividCreek };
+        static readonly Card[] AUTOTAP_WR_W = new Card[] { Card.MeanderingRiver };
+        static readonly Card[] AUTOTAP_WR_R = new Card[] { Card.HighlandLake };
+        static readonly Card[] AUTOTAP_WR_BOTH = new Card[] { Card.MysticMonastery, Card.VividCreek };
+        static readonly Card[] AUTOTAP_UR_U = new Card[] { Card.MeanderingRiver };
+        static readonly Card[] AUTOTAP_UR_R = new Card[] { };
+        static readonly Card[] AUTOTAP_UR_BOTH = new Card[] { Card.HighlandLake, Card.MysticMonastery, Card.VividCreek };
+        static readonly Card[] AUTOTAP_UWR_U = new Card[] { }; // Manual-tap lands that produce blue, but not white or red.
+        static readonly Card[] AUTOTAP_UWR_W = new Card[] { };
+        static readonly Card[] AUTOTAP_UWR_R = new Card[] { };
+        static readonly Card[] AUTOTAP_UWR_UW = new Card[] { Card.MeanderingRiver }; // Manual-tap lands that produce blue or white, but not red.
+        static readonly Card[] AUTOTAP_UWR_UR = new Card[] { Card.HighlandLake };
+        static readonly Card[] AUTOTAP_UWR_WR = new Card[] { };
+        static readonly Card[] AUTOTAP_UWR_ALL = new Card[] { Card.MysticMonastery, Card.VividCreek };
+        bool Pay(ManaCost cost, bool pay = false) {
+            // SIMPLIFICATION: Pay costs heuristically instead of including in the MCTS.
+            // SIMPLIFICATION: Including filter lands would require a search of some kind in here, so... let's not.
+            // Plus, weird situations like paying {U} with Plains and Mystic Gate, leaving a choice of mana to float.
+            int whiteSpent = Math.Min(whiteMana, cost.Item1);
+            int blueSpent = Math.Min(blueMana, cost.Item2);
+            int redSpent = Math.Min(redMana, cost.Item3);
+            int greenSpent = Math.Min(greenMana, cost.Item4);
+            whiteMana -= whiteSpent;
+            blueMana -= blueSpent;
+            redMana -= redSpent;
+            greenMana -= greenSpent;
+            int[] colorLeft = new int[] { cost.Item1 - whiteSpent, cost.Item2 - blueSpent, cost.Item3 - redSpent, cost.Item4 - greenSpent };
+            int tapped = 0;
+
+            // Colored portion.
+            if (colorLeft[0] > 0) {
+                if (colorLeft[1] > 0) {
+                    if (colorLeft[2] > 0) {
+                        // UWR costs.
+                        tapped = PayTricolor(colorLeft[0], colorLeft[1], colorLeft[2], AUTOTAP_UWR_U, AUTOTAP_UWR_W, AUTOTAP_UWR_R, AUTOTAP_UWR_UW, AUTOTAP_UWR_UR, AUTOTAP_UWR_WR, AUTOTAP_UWR_ALL, false);
+                    } else {
+                        // UW costs.
+                        tapped = PayTwoColor(colorLeft[1], colorLeft[0], AUTOTAP_UW_U, AUTOTAP_UW_W, AUTOTAP_WU_BOTH, false);
+                    }
+                } else {
+                    if (colorLeft[2] > 0) {
+                        // WR costs.
+                        tapped = PayTwoColor(colorLeft[0], colorLeft[2], AUTOTAP_WR_W, AUTOTAP_WR_R, AUTOTAP_WR_BOTH, true);
+                    } else {
+                        // W costs.
+                        tapped = PayMonocolor(colorLeft[0] - whiteMana, AUTOTAP_MONOWHITE, true);
+                    }
+                }
+            } else if (colorLeft[1] > 0) {
+                if (colorLeft[2] > 0) {
+                    // UR costs.
+                    tapped = PayTwoColor(colorLeft[1], colorLeft[2], AUTOTAP_UR_U, AUTOTAP_UR_R, AUTOTAP_UR_BOTH, false);
+                } else {
+                    // U costs.
+                    tapped = PayMonocolor(colorLeft[1] - blueMana, AUTOTAP_MONOBLUE, false);
+                }
+            } else if (colorLeft[2] > 0) {
+                // R costs.
+                tapped = PayMonocolor(colorLeft[2] - redMana, AUTOTAP_MONORED, true);
+            } else if (colorLeft[3] > 0) {
+                throw new NotImplementedException();
             }
-            return new Tuple<int, int>(blue, generic);
-        }
-        bool HaveWURMana() {
-            int flex = untappedLands[(int)Card.MysticMonastery];
-            if (flex > 0) flex += untappedFatestitchers;
-            int missing = 0;
-            if (whiteMana == 0) missing++;
-            if (blueMana == 0) missing++;
-            if (redMana == 0) missing++;
-            return flex >= missing;
-        }
-        void SpendMana(int white, int blue, int red, int generic) {
-            // SIMPLIFICATION: Tap lands and spend mana heuristically instead of including in the search.
-            SpendMana(0, white);
-            SpendMana(1, blue);
-            SpendMana(2, red);
-            if (generic == 0) return;
-            // TODO: Saving mana for Jeskai Ascendancy if in hand, or if we already have a ton of blue mana.
-            bool saveForAscendancy = false;// ascendancies == 0 && handQuantities[(int)Card.JeskaiAscendancy] > 0 && HaveWURMana();
-            if (!saveForAscendancy) {
-                generic = SpendMana(0, generic);
-                generic = SpendMana(2, generic);
-                generic = SpendMana(1, generic);
-                Debug.Assert(generic == 0, "A spell was not paid for correctly.");
+            if (colorLeft.Sum() > 0 && tapped == 0) {
+                return false;
+            }
+            if (cost.Item5 == 0) {
+                if (pay) {
+                    ConvertVivids();
+                } else {
+                    whiteMana += whiteSpent;
+                    blueMana += blueSpent;
+                    redMana += redSpent;
+                    greenMana += greenSpent;
+                    RevertTap(tapped);
+                }
+                return true;
+            }
+
+            // Generic portion.
+            // Pay nonblue mana from pool.
+            int generic = cost.Item5;
+            int min = Math.Min(generic, whiteMana);
+            generic -= min;
+            whiteMana -= min;
+            whiteSpent += min;
+            min = Math.Min(generic, redMana);
+            generic -= min;
+            redMana -= min;
+            redSpent += min;
+            min = Math.Min(generic, greenMana);
+            generic -= min;
+            greenMana -= min;
+            greenSpent += min;
+            // Tap lands that can't produce blue.
+            for (int i = 0; i < AUTOTAP_NONBLUE.Length && generic > 0; i++) {
+                int landIndex = (int)AUTOTAP_NONBLUE[i];
+                int toTap = Math.Min(untappedLands[landIndex], generic);
+                untappedLands[landIndex] -= toTap;
+                tappedLands[landIndex] += toTap;
+                generic -= toTap;
+            }
+            // Pay blue mana from pool.
+            min = Math.Min(generic, blueMana);
+            generic -= min;
+            blueMana -= min;
+            blueSpent += min;
+            // Tap lands that can produce blue.
+            for (int i = 0; i < AUTOTAP_MONOBLUE.Length && generic > 0; i++) {
+                int landIndex = (int)AUTOTAP_MONOBLUE[i];
+                int toTap = Math.Min(untappedLands[landIndex], generic);
+                untappedLands[landIndex] -= toTap;
+                tappedLands[landIndex] += toTap;
+                generic -= toTap;
+            }
+            // Finalize.
+            if (pay && generic == 0) {
+                ConvertVivids();
             } else {
+                whiteMana += whiteSpent;
+                blueMana += blueSpent;
+                redMana += redSpent;
+                greenMana += greenSpent;
+                RevertTap(tapped);
             }
-        }
-        int SpendMana(int type, int amount) {
-            if (amount == 0) return 0;
-            // Pay from the mana pool.
-            int pool;
-            if (type == 0) pool = whiteMana;
-            else if (type == 1) pool = blueMana;
-            else if (type == 2) pool = redMana;
-            else pool = 0;
-            int min = Math.Min(pool, amount);
-            if (type == 0) whiteMana -= min;
-            else if (type == 1) blueMana -= min;
-            else if (type == 2) pool = redMana -= min;
-            amount -= min;
-            // Pay with flex lands and Fatestitchers.
-            min = Math.Min(untappedLands[(int)Card.MysticMonastery], amount);
-            untappedLands[(int)Card.MysticMonastery] -= min;
-            tappedLands[(int)Card.MysticMonastery] += min;
-            amount -= min;
-            min = Math.Min(untappedFatestitchers, amount);
-            untappedFatestitchers -= min;
-            tappedFatestitchers += min;
-            amount -= min;
-            return amount;
-        }
-        void UntapLands(int n) {
-            // SIMPLIFICATION: Untap lands heuristically instead of including in the search.
-            // Untap lands.
-            n = Math.Min(n, untappedLands.Sum() + tappedLands.Sum());
-            int min = Math.Min(tappedLands[(int)Card.MysticMonastery], n);
-            tappedLands[(int)Card.MysticMonastery] -= min;
-            untappedLands[(int)Card.MysticMonastery] += min;
-            n -= min;
-            if (n == 0) return;
+            return generic == 0;
             // TODO: Saving mana for Jeskai Ascendancy.
-            // Float blue mana.
-            min = Math.Min(untappedLands[(int)Card.MysticMonastery], n);
-            blueMana += min;
-            n -= min;
-            min = Math.Min(tappedLands[(int)Card.Island], n);
-            blueMana += min;
-            n -= min;
-            // Float other mana.
-            while (n > 0) {
-                if (tappedLands[(int)Card.Plains] > 0) {
-                    whiteMana++;
+        }
+        int PayMonocolor(int n, Card[] landOrder, bool spendVivid) {
+            if (n <= 0) return 0;
+            int tapped = 0;
+            for (int i = 0; i < landOrder.Length; i++) {
+                Card land = landOrder[i];
+                int landIndex = (int)land;
+                while (n > 0 && untappedLands[landIndex] > 0) {
+                    if (land == Card.VividCreek) {
+                        if (vividCounters == 0) break;
+                        vividCounters--;
+                    }
+                    tapped = tapped * LAND_ETB_TAPPED.Length + landIndex;
+                    untappedLands[landIndex]--;
+                    tappedLands[landIndex]++;
                     n--;
                 }
-                if (n == 0) return;
-                if (tappedLands[(int)Card.Mountain] > 0) {
-                    redMana++;
-                    n--;
-                }
+                if (n == 0) return tapped;
             }
+            RevertTap(tapped);
+            return 0;
+        }
+        int PayTwoColor(int a, int b, Card[] aLands, Card[] bLands, Card[] abLands, bool bothSpendVivid) {
+            // If blue is one of the colors, it will be the first.
+            int tapped = 0;
+            for (int i = 0; i < aLands.Length && a > 0; i++) {
+                int landIndex = (int)aLands[i];
+                tapped = tapped * LAND_ETB_TAPPED.Length + landIndex;
+                untappedLands[landIndex]--;
+                tappedLands[landIndex]--;
+                i--;
+                a--;
+            }
+            for (int i = 0; i < bLands.Length && b > 0; i++) {
+                int landIndex = (int)bLands[i];
+                tapped = tapped * LAND_ETB_TAPPED.Length + landIndex;
+                untappedLands[landIndex]--;
+                tappedLands[landIndex]--;
+                i--;
+                b--;
+            }
+            for (int i = 0; i < abLands.Length && (a > 0 || b > 0); i++) {
+                Card land = abLands[i];
+                if (land == Card.VividCreek) {
+                    if (bothSpendVivid || a == 0) {
+                        if (vividCounters == 0) {
+                            RevertTap(tapped);
+                            return 0;
+                        } else {
+                            vividCounters--;
+                        }
+                    }
+                }
+                int landIndex = (int)land;
+                tapped = tapped * LAND_ETB_TAPPED.Length + landIndex;
+                untappedLands[landIndex]--;
+                tappedLands[landIndex]--;
+                i--;
+                if (b > 0) b--;
+                else a--;
+            }
+            if (a > 0 || b > 0) {
+                RevertTap(tapped);
+                return 0;
+            }
+            return tapped;
+        }
+        int PayTricolor(int a, int b, int c, Card[] aLands, Card[] bLands, Card[] cLands, Card[] abLands, Card[] acLands, Card[] bcLands, Card[] abcLands, bool allSpendVivid) {
+            Debug.Assert(a == 1 && b == 1 && c == 1, "Unexpected tricolor cost.");
+            // If blue is one of the colors, it will be the first.
+            int tapped = 0;
+            for (int i = 0; i < aLands.Length && a > 0; i++) {
+                int landIndex = (int)aLands[i];
+                tapped = tapped * LAND_ETB_TAPPED.Length + landIndex;
+                untappedLands[landIndex]--;
+                tappedLands[landIndex]--;
+                i--;
+                a--;
+            }
+            for (int i = 0; i < bLands.Length && b > 0; i++) {
+                int landIndex = (int)bLands[i];
+                tapped = tapped * LAND_ETB_TAPPED.Length + landIndex;
+                untappedLands[landIndex]--;
+                tappedLands[landIndex]--;
+                i--;
+                b--;
+            }
+            for (int i = 0; i < cLands.Length && c > 0; i++) {
+                int landIndex = (int)cLands[i];
+                tapped = tapped * LAND_ETB_TAPPED.Length + landIndex;
+                untappedLands[landIndex]--;
+                tappedLands[landIndex]--;
+                i--;
+                c--;
+            }
+            int abCount = abLands.Select(l => untappedLands[(int)l]).Sum();
+            int acCount = acLands.Select(l => untappedLands[(int)l]).Sum();
+            int bcCount = bcLands.Select(l => untappedLands[(int)l]).Sum();
+            if (a == 1 && b == 1 && c == 1 && abCount > 0 && acCount > 0 && bcCount > 0) {
+                tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(abLands, 1), LAND_ETB_TAPPED.Length);
+                tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(acLands, 1), LAND_ETB_TAPPED.Length);
+                tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(bcLands, 1), LAND_ETB_TAPPED.Length);
+                a = 0;
+                b = 0;
+                c = 0;
+                return tapped;
+            }
+            if (abCount >= 2 && a > 0 && b > 0) {
+                tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(abLands, 2), LAND_ETB_TAPPED.Length);
+                a = 0;
+                b = 0;
+            }
+            if (acCount >= 2 && a > 0 && c > 0) {
+                tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(acLands, 2), LAND_ETB_TAPPED.Length);
+                a = 0;
+                c = 0;
+            }
+            if (bcCount >= 2 && b > 0 && c > 0) {
+                tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(bcLands, 2), LAND_ETB_TAPPED.Length);
+                b = 0;
+                c = 0;
+            }
+            if (abCount > 0 && (a > 0 != b > 0)) {
+                tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(abLands, 1), LAND_ETB_TAPPED.Length);
+                a = 0;
+                b = 0;
+            }
+            if (acCount > 0 && (a > 0 != c > 0)) {
+                tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(acLands, 1), LAND_ETB_TAPPED.Length);
+                a = 0;
+                c = 0;
+            }
+            if (bcCount > 0 && (b > 0 != c > 0)) {
+                tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(bcLands, 1), LAND_ETB_TAPPED.Length);
+                b = 0;
+                c = 0;
+            }
+            int abcCount = abcLands.Select(l => untappedLands[(int)l]).Sum();
+            if (abcCount < a + b + c) {
+                RevertTap(tapped);
+                return 0;
+            }
+            for (int i = 0; i < abcLands.Length && (a > 0 || b > 0 || c > 0); i++) {
+                Card land = abcLands[i];
+                if (land == Card.VividCreek) {
+                    if (allSpendVivid || a == 0) {
+                        if (vividCounters == 0) {
+                            RevertTap(tapped);
+                            return 0;
+                        } else {
+                            vividCounters--;
+                        }
+                    }
+                }
+                int landIndex = (int)abcLands[i];
+                tapped = tapped * LAND_ETB_TAPPED.Length + landIndex;
+                untappedLands[landIndex]--;
+                tappedLands[landIndex]--;
+                i--;
+                if (c > 0) c--;
+                else if (b > 0) b--;
+                else a--;
+            }
+            Debug.Assert(a == 0 && b == 0 && c == 0, "Failed to pay tricost.");
+            return tapped;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        int TapNFromLandArray(Card[] lands, int n) {
+            int tapped = 0;
+            for (int i = 0; i < lands.Length && n > 0; i++) {
+                int landIndex = (int)lands[i];
+                tapped = tapped * LAND_ETB_TAPPED.Length + landIndex;
+                untappedLands[landIndex]--;
+                tappedLands[landIndex]--;
+                i--;
+                n--;
+            }
+            Debug.Assert(n == 0, "Fewer untapped lands in array than expected.");
+            return tapped;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        void RevertTap(int tapped) {
+            while (tapped > 0) {
+                int i = tapped % LAND_ETB_TAPPED.Length;
+                if (i == (int)Card.VividCreek) vividCounters++;
+                untappedLands[i]++;
+                tappedLands[i]--;
+                tapped /= LAND_ETB_TAPPED.Length;
+            }
+        }
+        void ConvertVivids() {
+            // SIMPLIFICATION: When we don't have a counter for each vivid land, convert the excess into Islands.
+            int tappedVivids = tappedLands[(int)Card.VividCreek];
+            int untappedVivids = untappedLands[(int)Card.VividCreek];
+            int totalVivids = untappedVivids + tappedVivids;
+            totalVivids -= vividCounters;
+            if (totalVivids <= 0) return;
+            int n = Math.Min(tappedVivids, totalVivids);
+            tappedLands[(int)Card.VividCreek] -= n;
+            tappedLands[(int)Card.Island] += n;
+            totalVivids -= n;
+            if (n == 0) return;
+            n = Math.Min(untappedVivids, totalVivids);
+            untappedLands[(int)Card.VividCreek] -= n;
+            tappedLands[(int)Card.Island] += n;
+            blueMana += n;
+        }
+        static readonly Card[] UNTAP_BLUE = new Card[] { Card.MysticMonastery, Card.VividCreek, Card.MeanderingRiver, Card.HighlandLake }; // TODO: Prioritize Vivid Creek over Mystic Monastery when green is added.
+        
+        void UntapLands(int n) {
+            for (int i = 0; i < UNTAP_BLUE.Length && n > 0; i++) {
+                int landIndex = (int)UNTAP_BLUE[i];
+                int toUntap = Math.Min(n, tappedLands[i]);
+                tappedLands[i] -= toUntap;
+                untappedLands[i] += toUntap;
+                n -= toUntap;
+            }
+            if (n == 0) return;
+            int extraBlue = Math.Min(n, UNTAP_BLUE.Select(l => untappedLands[(int)l]).Sum() + tappedLands[(int)Card.Island]);
+            blueMana += extraBlue;
+            n -= extraBlue;
+            // TODO: Add nonblue untapping and floating when green is added.
         }
 
         static int[] MAX_CARD_ENUM_VALUE_POWERS = new int[] { 1, 1, CARD_ENUM_LENGTH,
@@ -813,6 +1147,7 @@ namespace JeskaiAscendancyMCTS {
             if (whiteMana > 0) tokens.Add(whiteMana + "W");
             if (blueMana > 0) tokens.Add(blueMana + "U");
             if (redMana > 0) tokens.Add(redMana + "R");
+            if (greenMana > 0) tokens.Add(greenMana + "G");
             if (tokens.Count > 0) {
                 sb.AppendLine("Mana pool: " + string.Join(", ", tokens));
                 tokens.Clear();
@@ -864,6 +1199,9 @@ namespace JeskaiAscendancyMCTS {
             return sb.ToString();
         }
         public string MoveToString(int move) {
+            if (choiceBounce) {
+                return string.Format("Return {0} to hand.", CARD_NAMES[(Card)move]);
+            }
             if (choiceDiscard > 0) {
                 List<string> tokens = new List<string>();
                 while (move > 0) {
@@ -904,6 +1242,9 @@ namespace JeskaiAscendancyMCTS {
             if (move == SPECIAL_MOVE_FETCH_MOUNTAIN) {
                 return "Play Evolving Wilds, crack, fetch a tapped Mountain.";
             }
+            if (move == SPECIAL_MOVE_FETCH_FOREST) {
+                return "Play Evolving Wilds, crack, fetch a tapped Forest.";
+            }
             if (move == SPECIAL_MOVE_FETCH_FAIL_TO_FIND) {
                 return "Play Evolving Wilds, crack, fail to find.";
             }
@@ -925,12 +1266,18 @@ namespace JeskaiAscendancyMCTS {
 
     public enum Card {
         None,
-        // lands
-        // TODO: More dual lands.
+        // autotap lands
         Plains,
         Island,
         Mountain,
+        Forest,
+        IzzetBoilerworks,
+        // manual tap lands
+        MeanderingRiver,
+        HighlandLake,
         MysticMonastery,
+        VividCreek,
+        // fetch lands
         EvolvingWilds,
         // spells
         Brainstorm,
