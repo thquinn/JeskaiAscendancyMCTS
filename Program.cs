@@ -15,9 +15,8 @@ namespace JeskaiAscendancyMCTS {
                                                           0.0006f }; // something I made up
         static Dictionary<Card, int> STARTING_LIST = new Dictionary<Card, int>() {
             { Card.Plains, 1 },
-            { Card.Island, 8 },
+            { Card.Island, 12 },
             { Card.Mountain, 1 },
-            { Card.IzzetBoilerworks, 4 },
             { Card.MysticMonastery, 4 },
             { Card.EvolvingWilds, 4 },
             { Card.Brainstorm, 4 },
@@ -46,7 +45,11 @@ namespace JeskaiAscendancyMCTS {
             int trials = 0;
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
+#if DEBUG
             Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 1 }, i => {
+#else
+            Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i => {
+#endif
                 int turns = AutoRunGame(STARTING_LIST, rollouts);
                 lock (l) {
                     trials++;
@@ -70,6 +73,7 @@ namespace JeskaiAscendancyMCTS {
                 state = new State(decklist, n);
                 mcts = new MCTS(state, rewards);
                 // Mulligan decision.
+                // TODO: More advanced mulligan logic.
                 float threshold = mulliganThresholds[n];
                 if (threshold == -1) {
                     break;
@@ -82,9 +86,7 @@ namespace JeskaiAscendancyMCTS {
             // Play the game.
             while (!mcts.rootState.IsWon() && !mcts.rootState.IsLost() && mcts.rootState.turn < rewards.Length) {
                 mcts.Rollout(rollouts);
-                List<string> moveStrings = new List<string>();
-                mcts.Advance(moveStrings);
-                foreach (string s in moveStrings) Console.WriteLine(s);
+                mcts.Advance();
             }
             if (state.IsWon()) {
                 return mcts.rootState.turn;
