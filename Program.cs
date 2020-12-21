@@ -114,6 +114,7 @@ namespace JeskaiAscendancyMCTS {
                     if (!int.TryParse(Console.ReadLine(), out chosen)) chosen = int.MinValue;
                 }
                 state.ExecuteMove(chosen);
+                state.SanityCheck();
                 Console.WriteLine();
                 Console.WriteLine(state);
             }
