@@ -87,6 +87,7 @@ namespace JeskaiAscendancyMCTS {
             while (!mcts.rootState.IsWon() && !mcts.rootState.IsLost() && mcts.rootState.turn < rewards.Length) {
                 mcts.Rollout(rollouts);
                 mcts.Advance();
+                mcts.rootState.SanityCheck();
             }
             if (state.IsWon()) {
                 return mcts.rootState.turn;

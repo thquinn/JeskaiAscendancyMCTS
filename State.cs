@@ -320,7 +320,7 @@ namespace JeskaiAscendancyMCTS {
                     continue;
                 }
                 if (card == Card.TreasureCruise) {
-                    int generic = 7 - graveyardFatestitchers - graveyardInventories - graveyardOther;
+                    int generic = Math.Max(0, 7 - graveyardFatestitchers - graveyardInventories - graveyardOther);
                     if (generic + 1 > totalMana) {
                         continue;
                     }
@@ -770,6 +770,16 @@ namespace JeskaiAscendancyMCTS {
         static readonly Card[] AUTOTAP_UWR_ALL = new Card[] { Card.MysticMonastery, Card.VividCreek };
         bool Pay(ManaCost cost, bool pay = false) {
 #if DEBUG
+            if (untappedFatestitchers == 0 || pay || StaticRandom.Next(1000) > 0) return PayImpl(cost, pay);
+            Console.WriteLine(this);
+            Console.WriteLine(cost);
+            Console.ReadLine();
+            Console.WriteLine(PayImpl(cost, pay));
+            Console.ReadLine();
+            Console.WriteLine(PayImpl(cost, pay));
+            return PayImpl(cost, pay);
+        }
+        bool PayImpl(ManaCost cost, bool pay = false) {
             int[] mCheck = new int[] { whiteMana, blueMana, redMana, greenMana };
             int[] ulCheck = untappedLands.Clone() as int[];
             int[] tlCheck = tappedLands.Clone() as int[];
@@ -787,37 +797,45 @@ namespace JeskaiAscendancyMCTS {
             greenMana -= greenSpent;
             int[] colorLeft = new int[] { cost.Item1 - whiteSpent, cost.Item2 - blueSpent, cost.Item3 - redSpent, cost.Item4 - greenSpent };
             int tapped = 0;
+            int fatestitchers = untappedFatestitchers;
 
             // Colored portion.
+            bool fatestitcherCanW = false, fatestitcherCanU = true, fatestitcherCanR = false;
             if (colorLeft[0] > 0) {
+                // SIMPLIFICATION: Fatestitchers can't untap vivid lands.
+                fatestitcherCanW = untappedFatestitchers > 0 && tappedLands[(int)Card.Plains] > 0 || AUTOTAP_MONOWHITE.Take(AUTOTAP_MONOWHITE.Length - 1).Any(l => untappedLands[(int)l] > 0 || tappedLands[(int)l] > 0);
                 if (colorLeft[1] > 0) {
                     if (colorLeft[2] > 0) {
+                        fatestitcherCanR = untappedFatestitchers > 0 && tappedLands[(int)Card.Plains] > 0 || tappedLands[(int)Card.IzzetBoilerworks] > 0 || AUTOTAP_MONORED.Take(AUTOTAP_MONORED.Length - 1).Any(l => untappedLands[(int)l] > 0 || tappedLands[(int)l] > 0);
                         // UWR costs.
-                        tapped = PayTricolor(colorLeft[0], colorLeft[1], colorLeft[2], AUTOTAP_UWR_U, AUTOTAP_UWR_W, AUTOTAP_UWR_R, AUTOTAP_UWR_UW, AUTOTAP_UWR_UR, AUTOTAP_UWR_WR, AUTOTAP_UWR_ALL, false);
+                        tapped = PayTricolor(colorLeft[0], colorLeft[1], colorLeft[2], AUTOTAP_UWR_U, AUTOTAP_UWR_W, AUTOTAP_UWR_R, AUTOTAP_UWR_UW, AUTOTAP_UWR_UR, AUTOTAP_UWR_WR, AUTOTAP_UWR_ALL, false, fatestitcherCanU, fatestitcherCanW, fatestitcherCanR);
                     } else {
                         // UW costs.
-                        tapped = PayTwoColor(colorLeft[1], colorLeft[0], AUTOTAP_UW_U, AUTOTAP_UW_W, AUTOTAP_WU_BOTH, false);
+                        tapped = PayTwoColor(colorLeft[1], colorLeft[0], AUTOTAP_UW_U, AUTOTAP_UW_W, AUTOTAP_WU_BOTH, false, fatestitcherCanU, fatestitcherCanW);
                     }
                 } else {
                     if (colorLeft[2] > 0) {
+                        fatestitcherCanR = untappedFatestitchers > 0 && tappedLands[(int)Card.Mountain] > 0 || tappedLands[(int)Card.IzzetBoilerworks] > 0 || AUTOTAP_MONORED.Take(AUTOTAP_MONORED.Length - 1).Any(l => untappedLands[(int)l] > 0 || tappedLands[(int)l] > 0);
                         // WR costs.
-                        tapped = PayTwoColor(colorLeft[0], colorLeft[2], AUTOTAP_WR_W, AUTOTAP_WR_R, AUTOTAP_WR_BOTH, true);
+                        tapped = PayTwoColor(colorLeft[0], colorLeft[2], AUTOTAP_WR_W, AUTOTAP_WR_R, AUTOTAP_WR_BOTH, true, fatestitcherCanW, fatestitcherCanR);
                     } else {
                         // W costs.
-                        tapped = PayMonocolor(colorLeft[0] - whiteMana, AUTOTAP_MONOWHITE, true);
+                        tapped = PayMonocolor(colorLeft[0] - whiteMana, AUTOTAP_MONOWHITE, true, fatestitcherCanW);
                     }
                 }
             } else if (colorLeft[1] > 0) {
                 if (colorLeft[2] > 0) {
+                    fatestitcherCanR = untappedFatestitchers > 0 && tappedLands[(int)Card.Mountain] > 0 || tappedLands[(int)Card.IzzetBoilerworks] > 0 || AUTOTAP_MONORED.Take(AUTOTAP_MONORED.Length - 1).Any(l => untappedLands[(int)l] > 0 || tappedLands[(int)l] > 0);
                     // UR costs.
-                    tapped = PayTwoColor(colorLeft[1], colorLeft[2], AUTOTAP_UR_U, AUTOTAP_UR_R, AUTOTAP_UR_BOTH, false);
+                    tapped = PayTwoColor(colorLeft[1], colorLeft[2], AUTOTAP_UR_U, AUTOTAP_UR_R, AUTOTAP_UR_BOTH, false, fatestitcherCanU, fatestitcherCanR);
                 } else {
                     // U costs.
-                    tapped = PayMonocolor(colorLeft[1] - blueMana, AUTOTAP_MONOBLUE, false);
+                    tapped = PayMonocolor(colorLeft[1] - blueMana, AUTOTAP_MONOBLUE, false, fatestitcherCanU);
                 }
             } else if (colorLeft[2] > 0) {
+                fatestitcherCanR = untappedFatestitchers > 0 && tappedLands[(int)Card.Mountain] > 0 || tappedLands[(int)Card.IzzetBoilerworks] > 0 || AUTOTAP_MONORED.Take(AUTOTAP_MONORED.Length - 1).Any(l => untappedLands[(int)l] > 0 || tappedLands[(int)l] > 0);
                 // R costs.
-                tapped = PayMonocolor(colorLeft[2] - redMana, AUTOTAP_MONORED, true);
+                tapped = PayMonocolor(colorLeft[2] - redMana, AUTOTAP_MONORED, true, fatestitcherCanR);
             } else if (colorLeft[3] > 0) {
                 throw new NotImplementedException();
             }
@@ -830,6 +848,7 @@ namespace JeskaiAscendancyMCTS {
                 Debug.Assert(Enumerable.SequenceEqual(new int[] { whiteMana, blueMana, redMana, greenMana }, mCheck), "Failed to untap correctly.");
                 Debug.Assert(Enumerable.SequenceEqual(untappedLands, ulCheck), "Failed to untap correctly.");
                 Debug.Assert(Enumerable.SequenceEqual(tappedLands, tlCheck), "Failed to untap correctly.");
+                Debug.Assert(untappedFatestitchers == fatestitchers, "Failed to untap correctly.");
 #endif
                 return false;
             }
@@ -842,10 +861,14 @@ namespace JeskaiAscendancyMCTS {
                     redMana += redSpent;
                     greenMana += greenSpent;
                     RevertTap(tapped);
+                    int fatestitcherRevert = fatestitchers - untappedFatestitchers;
+                    untappedFatestitchers += fatestitcherRevert;
+                    tappedFatestitchers -= fatestitcherRevert;
 #if DEBUG
                     Debug.Assert(Enumerable.SequenceEqual(new int[] { whiteMana, blueMana, redMana, greenMana }, mCheck), "Failed to untap correctly.");
                     Debug.Assert(Enumerable.SequenceEqual(untappedLands, ulCheck), "Failed to untap correctly.");
                     Debug.Assert(Enumerable.SequenceEqual(tappedLands, tlCheck), "Failed to untap correctly.");
+                    Debug.Assert(untappedFatestitchers == fatestitchers, "Failed to untap correctly.");
 #endif
                 }
                 return true;
@@ -891,6 +914,11 @@ namespace JeskaiAscendancyMCTS {
                 generic--;
                 i--;
             }
+            // Tap Fatestitchers.
+            min = Math.Min(untappedFatestitchers, generic);
+            generic -= min;
+            untappedFatestitchers -= min;
+            tappedFatestitchers += min;
             // Finalize.
             if (pay && generic == 0) {
                 ConvertVivids();
@@ -900,16 +928,20 @@ namespace JeskaiAscendancyMCTS {
                 redMana += redSpent;
                 greenMana += greenSpent;
                 RevertTap(tapped);
+                int fatestitcherRevert = fatestitchers - untappedFatestitchers;
+                untappedFatestitchers += fatestitcherRevert;
+                tappedFatestitchers -= fatestitcherRevert;
 #if DEBUG
                 Debug.Assert(Enumerable.SequenceEqual(new int[] { whiteMana, blueMana, redMana, greenMana }, mCheck), "Failed to untap correctly.");
                 Debug.Assert(Enumerable.SequenceEqual(untappedLands, ulCheck), "Failed to untap correctly.");
                 Debug.Assert(Enumerable.SequenceEqual(tappedLands, tlCheck), "Failed to untap correctly.");
+                Debug.Assert(untappedFatestitchers == fatestitchers, "Failed to untap correctly.");
 #endif
             }
             return generic == 0;
             // TODO: Saving mana for Jeskai Ascendancy.
         }
-        int PayMonocolor(int n, Card[] landOrder, bool spendVivid) {
+        int PayMonocolor(int n, Card[] landOrder, bool spendVivid, bool canFatestitcher) {
             if (n <= 0) return 0;
             int tapped = 0;
             for (int i = 0; i < landOrder.Length; i++) {
@@ -927,10 +959,18 @@ namespace JeskaiAscendancyMCTS {
                 }
                 if (n == 0) return tapped;
             }
+            // Fatestitchers.
+            if (canFatestitcher) {
+                if (untappedFatestitchers >= n) {
+                    untappedFatestitchers -= n;
+                    tappedFatestitchers += n;
+                    return tapped;
+                }
+            }
             RevertTap(tapped);
             return 0;
         }
-        int PayTwoColor(int a, int b, Card[] aLands, Card[] bLands, Card[] abLands, bool bothSpendVivid) {
+        int PayTwoColor(int a, int b, Card[] aLands, Card[] bLands, Card[] abLands, bool bothSpendVivid, bool canA, bool canB) {
             // If blue is one of the colors, it will be the first.
             int tapped = 0;
             for (int i = 0; i < aLands.Length && a > 0; i++) {
@@ -972,13 +1012,28 @@ namespace JeskaiAscendancyMCTS {
                 if (b > 0) b--;
                 else a--;
             }
+            if (a == 0 && b == 0) return tapped;
+            // Fatestitchers.
+            int fatestitchers = untappedFatestitchers;
+            if (canA && untappedFatestitchers >= a) {
+                untappedFatestitchers -= a;
+                tappedFatestitchers += a;
+                a = 0;
+            }
+            if (canB && untappedFatestitchers >= b) {
+                untappedFatestitchers -= b;
+                tappedFatestitchers += b;
+                b = 0;
+            }
+            // Return.
             if (a > 0 || b > 0) {
+                Debug.Assert(untappedFatestitchers == fatestitchers); // TODO: This should be firing sometimes...
                 RevertTap(tapped);
                 return 0;
             }
             return tapped;
         }
-        int PayTricolor(int a, int b, int c, Card[] aLands, Card[] bLands, Card[] cLands, Card[] abLands, Card[] acLands, Card[] bcLands, Card[] abcLands, bool allSpendVivid) {
+        int PayTricolor(int a, int b, int c, Card[] aLands, Card[] bLands, Card[] cLands, Card[] abLands, Card[] acLands, Card[] bcLands, Card[] abcLands, bool allSpendVivid, bool canA, bool canB, bool canC) {
             Debug.Assert(a == 1 && b == 1 && c == 1, "Unexpected tricolor cost.");
             // If blue is one of the colors, it will be the first.
             int tapped = 0;
@@ -1012,6 +1067,9 @@ namespace JeskaiAscendancyMCTS {
             int abCount = abLands.Select(l => untappedLands[(int)l]).Sum();
             int acCount = acLands.Select(l => untappedLands[(int)l]).Sum();
             int bcCount = bcLands.Select(l => untappedLands[(int)l]).Sum();
+            canA |= abCount > 0 || acCount > 0;
+            canB |= abCount > 0 || bcCount > 0;
+            canC |= acCount > 0 || bcCount > 0;
             if (a == 1 && b == 1 && c == 1 && abCount > 0 && acCount > 0 && bcCount > 0) {
                 tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(abLands, 1), LAND_ETB_TAPPED.Length);
                 tapped = Util.CombineMultiplicativeIndices(tapped, TapNFromLandArray(acLands, 1), LAND_ETB_TAPPED.Length);
@@ -1051,8 +1109,9 @@ namespace JeskaiAscendancyMCTS {
                 b = 0;
                 c = 0;
             }
+            // Trilands.
             int abcCount = abcLands.Select(l => untappedLands[(int)l]).Sum();
-            if (abcCount < a + b + c) {
+            if (abcCount + (abcCount > 0 ? untappedFatestitchers : 0) < a + b + c) {
                 RevertTap(tapped);
                 return 0;
             }
@@ -1077,6 +1136,21 @@ namespace JeskaiAscendancyMCTS {
                 if (c > 0) c--;
                 else if (b > 0) b--;
                 else a--;
+            }
+            while (a > 0 && canA) {
+                a--;
+                untappedFatestitchers--;
+                tappedFatestitchers++;
+            }
+            while (b > 0 && canB) {
+                b--;
+                untappedFatestitchers--;
+                tappedFatestitchers++;
+            }
+            while (c > 0 && canC) {
+                c--;
+                untappedFatestitchers--;
+                tappedFatestitchers++;
             }
             Debug.Assert(a == 0 && b == 0 && c == 0, "Failed to pay tricost.");
             return tapped;
@@ -1326,6 +1400,12 @@ namespace JeskaiAscendancyMCTS {
             int totalCards = topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count + handQuantities.Sum() + untappedLands.Sum() + tappedLands.Sum() + ascendancies + untappedFatestitchers + tappedFatestitchers + graveyardFatestitchers + graveyardInventories + graveyardOther + exiledOther;
             if (stack != Card.None) totalCards++;
             Debug.Assert(totalCards == 60, string.Format("Total cards in the state is {0}, not 60!\n{1}", totalCards, this));
+            Debug.Assert(untappedLands.All(n => n >= 0), "Negative untapped land count.");
+            Debug.Assert(tappedLands.All(n => n >= 0), "Negative tapped land count.");
+            Debug.Assert(handQuantities.All(n => n >= 0), "Negative hand quantity.");
+            Debug.Assert(shuffledLibraryQuantities.All(n => n >= 0), "Negative library quantity.");
+            Debug.Assert(untappedFatestitchers >= 0, "Negative untapped Fatestitchers.");
+            Debug.Assert(tappedFatestitchers >= 0, "Negative tapped Fatestitchers.");
         }
     }
 
