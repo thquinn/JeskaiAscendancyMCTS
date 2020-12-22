@@ -18,6 +18,7 @@ namespace JeskaiAscendancyMCTS {
             { Card.Island, 12 },
             { Card.Mountain, 1 },
             { Card.MysticMonastery, 4 },
+            //{ Card.VividCreek, 4 },
             { Card.EvolvingWilds, 4 },
             { Card.Brainstorm, 4 },
             { Card.CeruleanWisps, 2 },
@@ -31,6 +32,7 @@ namespace JeskaiAscendancyMCTS {
             { Card.Ponder, 4 },
             { Card.TreasureCruise, 2 },
         };
+        // other lands: Meandering River, HighlandLake, Vivid Creek
 
         static void Main(string[] args) {
             //RunManualTest(STARTING_LIST);
@@ -63,7 +65,7 @@ namespace JeskaiAscendancyMCTS {
                 }
             });
             stopwatch.Stop();
-            Console.WriteLine("Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", 0, (totalReward / trials).ToString("N2"), trials, rewards.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
+            Console.WriteLine("Done in {0} ms. Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", stopwatch.ElapsedMilliseconds, (totalReward / trials).ToString("N2"), trials, rewards.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
             Console.ReadLine();
         }
         static int AutoRunGame(Dictionary<Card, int> decklist, int rollouts) {

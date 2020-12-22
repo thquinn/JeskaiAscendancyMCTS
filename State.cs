@@ -256,6 +256,11 @@ namespace JeskaiAscendancyMCTS {
             if (choiceObsessive > 0) {
                 return CanPay(manaDAG, new ManaCost(0, 1, 0, 0, 0)) ? new int[] { 0, 1 } : new int[] { 0 };
             }
+            if (ascendancies > 0 && graveyardFatestitchers > 0 && CanPay(manaDAG, new ManaCost(0, 1, 0, 0, 0))) {
+                // SIMPLIFICATION: Only unearth Fatestitchers with at least one Jeskai Ascendancy in play. They can otherwise be used to fix, but it's marginal.
+                // SIMPLIFICATION: Always unearth Fatestitchers if able.
+                return new int[] { SPECIAL_MOVE_UNEARTH_FATESTITCHER };
+            }
             // Playing lands and casting spells.
             moves = new List<int>(4);
             for (int i = landPlay ? 1 : LAND_ETB_TAPPED.Length; i < handQuantities.Length; i++) {
@@ -318,10 +323,6 @@ namespace JeskaiAscendancyMCTS {
                     continue;
                 }
                 moves.Add(i);
-            }
-            if (ascendancies > 0 && graveyardFatestitchers > 0 && CanPay(manaDAG, new ManaCost(0, 1, 0, 0, 0))) {
-                // SIMPLIFICATION: Only unearth Fatestitchers with at least one Jeskai Ascendancy in play. They can otherwise be used to fix, but it's marginal.
-                moves.Add(SPECIAL_MOVE_UNEARTH_FATESTITCHER);
             }
             moves.Add(SPECIAL_MOVE_END_TURN);
             return moves.ToArray();
@@ -414,7 +415,7 @@ namespace JeskaiAscendancyMCTS {
                 choiceObsessive--;
                 if (move == 1) {
                     Pay(new ManaCost(0, 1, 0, 0, 0));
-                    ascendancyTriggers += ascendancies;
+                    TriggerAscendancies();
                     // SIMPLIFICATION: Since the order of multiple cards drawn doesn't matter, future draws combining with this chance event will underestimate the event's true probability.
                     chanceEvent = Draw();
                 }
@@ -498,7 +499,7 @@ namespace JeskaiAscendancyMCTS {
                 // Cast a spell from hand.
                 handQuantities[move]--;
                 stack = (Card)move;
-                ascendancyTriggers = ascendancies;
+                TriggerAscendancies();
                 if (stack == Card.TreasureCruise) {
                     // Delve.
                     // SIMPLIFICATION: Always delve the max amount, preserving Fatestitchers, then Frantic Inventories.
@@ -720,12 +721,16 @@ namespace JeskaiAscendancyMCTS {
             topOfDeck.Clear();
             bottomOfDeck.Clear();
         }
+        void TriggerAscendancies() {
+            ascendancyTriggers += ascendancies;
+            // SIMPLIFICATION: Resolve the +1/+1 portion of the trigger immediately, to bring the win horizon closer.
+            totalPower += (untappedFatestitchers + tappedFatestitchers) * ascendancies;
+        }
         ChanceEvent ResolveAscendancyTrigger() {
             ascendancyTriggers--;
             UntapLands(untappedFatestitchers);
             untappedFatestitchers += tappedFatestitchers;
             tappedFatestitchers = 0;
-            totalPower += untappedFatestitchers;
             choiceDiscard = 1;
             return Draw(); // SIMPLIFICATION: Always loot.
         }
@@ -744,17 +749,17 @@ namespace JeskaiAscendancyMCTS {
             // Construct a directed acyclic graph that represents how much mana of each color is available, dependent on other colors.
             int[] dag = new int[] {
                 /* max total mana */ -1, // (to be calculated)
-                /* max blue mana  */ blueMana + MANADAG_LANDS_BLUE.Select(i => untappedLands[i]).Sum(),
+                /* max blue mana  */ blueMana + untappedLands[(int)Card.MeanderingRiver] + untappedLands[(int)Card.HighlandLake] + untappedLands[(int)Card.MysticMonastery] + untappedLands[(int)Card.VividCreek],
                 /* max white mana */ whiteMana,
                 /* max red mana   */ redMana,
                 /* max green mana */ greenMana,
-                /* blue that can be converted to white  */ MANADAG_LANDS_BLUE_TO_WHITE.Select(i => untappedLands[i]).Sum(),
-                /* blue that can be converted to red    */ MANADAG_LANDS_BLUE_TO_RED.Select(i => untappedLands[i]).Sum(),
-                /* blue that can be converted to green  */ MANADAG_LANDS_BLUE_TO_GREEN.Select(i => untappedLands[i]).Sum(),
+                /* blue that can be converted to white  */ untappedLands[(int)Card.MeanderingRiver] + untappedLands[(int)Card.MysticMonastery] + untappedLands[(int)Card.VividCreek],
+                /* blue that can be converted to red    */ untappedLands[(int)Card.HighlandLake] + untappedLands[(int)Card.MysticMonastery] + untappedLands[(int)Card.VividCreek],
+                /* blue that can be converted to green  */ untappedLands[(int)Card.VividCreek],
                 /* white that can be converted to red   */ 0,
                 /* white that can be converted to green */ 0,
                 /* red that can be converted to green   */ 0,
-                /* blue that can be converted to white or red */ MANADAG_LANDS_UWR.Select(i => untappedLands[i]).Sum(), // edges between edges, yikes. we're not in DAGsas anymore...
+                /* blue that can be converted to white or red */ untappedLands[(int)Card.MysticMonastery] + untappedLands[(int)Card.VividCreek], // edges between edges, yikes. we're not in DAGsas anymore...
             };
             if (untappedFatestitchers > 0) {
                 dag[MANADAG_BLUE] += untappedFatestitchers;
@@ -828,11 +833,13 @@ namespace JeskaiAscendancyMCTS {
             int blueAndGeneric = cost.Item2 + genericCost;
             int blueFromPool = Math.Min(blueMana, blueAndGeneric);
             blueMana -= blueFromPool;
-            TapN(MANADAG_LANDS_BLUE, blueAndGeneric - blueFromPool);
+            TapN(MANADAG_LANDS_BLUE, blueAndGeneric - blueFromPool, false);
+            ConvertVivids();
 #if DEBUG
             int[] newDAG = CreateManaDAG();
             int newTotal = newDAG[MANADAG_TOTAL];
             Debug.Assert(newTotal == dag[MANADAG_TOTAL] - cost.Item1 - cost.Item2 - cost.Item3 - cost.Item4 - cost.Item5);
+            SanityCheck();
 #endif
         }
         void DAGTransferWithTap(int[] landIndices, int[] dag, int a, int b, int aToB, int amount) {
@@ -842,7 +849,7 @@ namespace JeskaiAscendancyMCTS {
             dag[a] -= amount;
             dag[b] += amount;
         }
-        void TapN(int[] landIndices, int n) {
+        void TapN(int[] landIndices, int n, bool spendVivid = true) {
             int i = 0;
             while (n > 0) {
                 while (i < landIndices.Length && untappedLands[landIndices[i]] == 0) i++;
@@ -851,12 +858,27 @@ namespace JeskaiAscendancyMCTS {
                 int tapped = Math.Min(n, untappedLands[landIndex]);
                 untappedLands[landIndex] -= tapped;
                 tappedLands[landIndex] += tapped;
-                if (landIndex == (int)Card.VividCreek) vividCounters -= tapped;
+                if (spendVivid && landIndex == (int)Card.VividCreek) vividCounters -= tapped;
                 n -= tapped;
             }
             Debug.Assert(n <= untappedFatestitchers, "Can't pay for the rest with Fatestitchers.");
             untappedFatestitchers -= n;
             tappedFatestitchers += n;
+        }
+        void ConvertVivids() {
+            // SIMPLIFICATIONS: Count spent Vivid lands as basics.
+            int vivids = untappedLands[(int)Card.VividCreek] + tappedLands[(int)Card.VividCreek];
+            while (vivids > vividCounters && tappedLands[(int)Card.VividCreek] > 0) {
+                tappedLands[(int)Card.VividCreek]--;
+                tappedLands[(int)Card.Island]++;
+                vivids--;
+            }
+            while (vivids > vividCounters && untappedLands[(int)Card.VividCreek] > 0) {
+                untappedLands[(int)Card.VividCreek]--;
+                tappedLands[(int)Card.Island]++;
+                blueMana++;
+                vivids--;
+            }
         }
 
         static readonly Card[] UNTAP_BLUE = new Card[] { Card.IzzetBoilerworks, Card.MysticMonastery, Card.VividCreek, Card.MeanderingRiver, Card.HighlandLake }; // TODO: Prioritize Vivid Creek over Mystic Monastery when green is added.
@@ -954,7 +976,11 @@ namespace JeskaiAscendancyMCTS {
             }
             for (int i = 1; i < untappedLands.Length; i++) {
                 if (untappedLands[i] > 0) {
-                    tokens.Add(string.Format("{0} {1}", untappedLands[i], CARD_NAMES[(Card)i]));
+                    if (i == (int)Card.VividCreek) {
+                        tokens.Add(string.Format("{0} {1} ({2} total {3})", untappedLands[i], CARD_NAMES[(Card)i], vividCounters, vividCounters == 1 ? "counter" : "counters"));
+                    } else {
+                        tokens.Add(string.Format("{0} {1}", untappedLands[i], CARD_NAMES[(Card)i]));
+                    }
                 }
             }
             if (tokens.Count > 0) {
@@ -963,7 +989,11 @@ namespace JeskaiAscendancyMCTS {
             }
             for (int i = 1; i < tappedLands.Length; i++) {
                 if (tappedLands[i] > 0) {
-                    tokens.Add(string.Format("{0} {1}", tappedLands[i], CARD_NAMES[(Card)i]));
+                    if (i == (int)Card.VividCreek) {
+                        tokens.Add(string.Format("{0} {1} ({2} total {3})", tappedLands[i], CARD_NAMES[(Card)i], vividCounters, vividCounters == 1 ? "counter" : "counters"));
+                    } else {
+                        tokens.Add(string.Format("{0} {1}", tappedLands[i], CARD_NAMES[(Card)i]));
+                    }
                 }
             }
             if (tokens.Count > 0) {
@@ -1058,13 +1088,13 @@ namespace JeskaiAscendancyMCTS {
         }
         public void SanityCheck() {
             Debug.Assert(shuffledLibraryCount == shuffledLibraryQuantities.Sum(), "Shuffled library count has not been updated correctly.");
-            int totalCards = topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count + handQuantities.Sum() + untappedLands.Sum() + tappedLands.Sum() + ascendancies + untappedFatestitchers + tappedFatestitchers + graveyardFatestitchers + graveyardInventories + graveyardOther + exiledOther;
+            int totalCards = topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count + handQuantities.Sum() + untappedLands.Sum() + tappedLands.Sum() + ascendancies + untappedFatestitchers + tappedFatestitchers + graveyardFatestitchers + graveyardInventories + graveyardOther + exiledFatestitchers + exiledOther;
             if (stack != Card.None) totalCards++;
-            Debug.Assert(totalCards == 60, string.Format("Total cards in the state is {0}, not 60!\n{1}", totalCards, this));
             Debug.Assert(untappedLands.All(n => n >= 0), "Negative untapped land count.");
             Debug.Assert(tappedLands.All(n => n >= 0), "Negative tapped land count.");
             Debug.Assert(handQuantities.All(n => n >= 0), "Negative hand quantity.");
             Debug.Assert(shuffledLibraryQuantities.All(n => n >= 0), "Negative library quantity.");
+            Debug.Assert(totalCards == 60, string.Format("Total cards in the state is {0}, not 60!\n{1}", totalCards, this));
             Debug.Assert(new int[] { whiteMana, blueMana, redMana, greenMana }.All(n => n >= 0), "Negative mana in pool.");
             Debug.Assert(untappedFatestitchers >= 0, "Negative untapped Fatestitchers.");
             Debug.Assert(tappedFatestitchers >= 0, "Negative tapped Fatestitchers.");
