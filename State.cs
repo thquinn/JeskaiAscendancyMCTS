@@ -35,38 +35,64 @@ namespace JeskaiAscendancyMCTS {
             // spells
             { Card.Brainstorm, "Brainstorm" },
             { Card.CeruleanWisps, "Cerulean Wisps" },
+            { Card.DesperateRavings, "Desperate Ravings" },
             { Card.Fatestitcher, "Fatestitcher" },
             { Card.FranticInventory, "Frantic Inventory" },
             { Card.FranticSearch, "Frantic Search" },
             { Card.GitaxianProbe, "Gitaxian Probe" },
+            { Card.IdeasUnbound, "Ideas Unbound" },
+            { Card.IzzetCharm, "Izzet Charm" },
             { Card.JeskaiAscendancy, "Jeskai Ascendancy" },
+            { Card.MagmaticInsight, "Magmatic Insight" },
             { Card.ObsessiveSearch, "Obsessive Search" },
+            { Card.OmenOfTheSea, "Omen of the Sea" },
             { Card.Opt, "Opt" },
             { Card.Ponder, "Ponder" },
+            { Card.ThinkTwice, "Think Twice" },
+            { Card.ToArms, "To Arms!" },
             { Card.TreasureCruise, "Treasure Cruise" },
+            { Card.VisionSkeins, "Vision Skeins" },
+            { Card.WitchingWell, "Witching Well" },
         };
         // TODO: Make both of these into arrays.
         static readonly Dictionary<Card, ManaCost> MANA_COSTS = new Dictionary<Card, ManaCost>() {
             // white, blue, red, green, generic
             { Card.Brainstorm, new ManaCost(0, 1, 0, 0, 0) },
             { Card.CeruleanWisps, new ManaCost(0, 1, 0, 0, 0) },
+            { Card.DesperateRavings, new ManaCost(0, 0, 1, 0, 1) },
             { Card.FranticInventory, new ManaCost(0, 1, 0, 0, 1) },
             { Card.FranticSearch, new ManaCost(0, 1, 0, 0, 2) },
             { Card.GitaxianProbe, new ManaCost(0, 0, 0, 0, 0) }, // SIMPLIFICATION: Always pay life for Gitaxian Probe.
+            { Card.IdeasUnbound, new ManaCost(0, 2, 0, 0, 0) },
+            { Card.IzzetCharm, new ManaCost(0, 1, 1, 0, 0) },
             { Card.JeskaiAscendancy, new ManaCost(1, 1, 1, 0, 0) },
+            { Card.MagmaticInsight, new ManaCost(0, 0, 1, 0, 0) },
             { Card.ObsessiveSearch, new ManaCost(0, 1, 0, 0, 0) },
+            { Card.OmenOfTheSea, new ManaCost(0, 1, 0, 0, 1) },
             { Card.Opt, new ManaCost(0, 1, 0, 0, 0) },
             { Card.Ponder, new ManaCost(0, 1, 0, 0, 0) },
-            { Card.TreasureCruise, new ManaCost(0, 1, 0, 0, 7) }
+            { Card.ThinkTwice, new ManaCost(0, 1, 0, 0, 1) },
+            { Card.ToArms, new ManaCost(1, 0, 0, 0, 1) },
+            { Card.TreasureCruise, new ManaCost(0, 1, 0, 0, 7) },
+            { Card.VisionSkeins, new ManaCost(0, 1, 0, 0, 1) },
+            { Card.WitchingWell, new ManaCost(0, 1, 0, 0, 0) },
         };
+        static readonly ManaCost MANA_COST_CRACK_OMEN = new ManaCost(0, 1, 0, 0, 2);
+        static readonly ManaCost MANA_COST_CRACK_WELL = new ManaCost(0, 1, 0, 0, 3);
+        static readonly ManaCost MANA_COST_FLASHBACK_RAVINGS = new ManaCost(0, 1, 0, 0, 2);
+        static readonly ManaCost MANA_COST_FLASHBACK_THINK = new ManaCost(0, 1, 0, 0, 2);
         readonly bool[] LAND_ETB_TAPPED = new bool[] { false, false, false, false, false, true, true, true, true, true, false }; // starting with None, then Plains
-        static readonly int SPECIAL_MOVE_END_TURN = 0;
+        public static readonly int SPECIAL_MOVE_END_TURN = -999;
         static readonly int SPECIAL_MOVE_FETCH_PLAINS = -1;
         static readonly int SPECIAL_MOVE_FETCH_ISLAND = -2;
         static readonly int SPECIAL_MOVE_FETCH_MOUNTAIN = -3;
         static readonly int SPECIAL_MOVE_FETCH_FOREST = -4;
         static readonly int SPECIAL_MOVE_FETCH_FAIL_TO_FIND = -5;
         static readonly int SPECIAL_MOVE_UNEARTH_FATESTITCHER = -6;
+        static readonly int SPECIAL_MOVE_CRACK_OMEN = -7;
+        static readonly int SPECIAL_MOVE_CRACK_WELL = -8;
+        static readonly int SPECIAL_MOVE_FLASHBACK_RAVINGS = -9;
+        static readonly int SPECIAL_MOVE_FLASHBACK_THINK = -10;
 
         public int turn;
 
@@ -89,15 +115,17 @@ namespace JeskaiAscendancyMCTS {
         int ascendancies;
         int untappedFatestitchers, tappedFatestitchers;
         int totalPower;
+        int omens, wells;
 
         // Graveyard.
-        int graveyardFatestitchers, graveyardInventories, graveyardOther;
+        int graveyardFatestitchers, graveyardInventories, graveyardRavings, graveyardThinks, graveyardOther;
 
         // Exile.
         int exiledFatestitchers, exiledOther;
 
         // Stack.
         Card stack; // Which card is waiting for Jeskai Ascendancy trigger(s) to resolve?
+        bool exileStack;
 
         // Choices.
         bool choiceBounce; // Bounce a land.
@@ -109,7 +137,10 @@ namespace JeskaiAscendancyMCTS {
         int choiceObsessive; // N Obsessive Searches were discarded: pay U to draw a card?
         int ascendancyTriggers; // We have one or more Ascendancy triggers waiting to trigger after we float mana.
         int postScryDraws; // We have one or more draws waiting for a scry.
+
+        // Other state.
         bool cleanupDiscard; // The current choiceDiscard is happening in the cleanup step.
+        int eotDiscards; // Discards to be performed at EOT from Ideas Unbound
 
         public State(State other) {
             decklist = other.decklist;
@@ -132,12 +163,17 @@ namespace JeskaiAscendancyMCTS {
             untappedFatestitchers = other.untappedFatestitchers;
             tappedFatestitchers = other.tappedFatestitchers;
             totalPower = other.totalPower;
+            omens = other.omens;
+            wells = other.wells;
             graveyardFatestitchers = other.graveyardFatestitchers;
             graveyardInventories = other.graveyardInventories;
+            graveyardRavings = other.graveyardRavings;
+            graveyardThinks = other.graveyardThinks;
             graveyardOther = other.graveyardOther;
             exiledFatestitchers = other.exiledFatestitchers;
             exiledOther = other.exiledOther;
             stack = other.stack;
+            exileStack = other.exileStack;
             choiceBounce = other.choiceBounce;
             choiceDiscard = other.choiceDiscard;
             choiceScry = other.choiceScry;
@@ -147,7 +183,8 @@ namespace JeskaiAscendancyMCTS {
             choiceObsessive = other.choiceObsessive;
             ascendancyTriggers = other.ascendancyTriggers;
             postScryDraws = other.postScryDraws;
-            cleanupDiscard = other.cleanupDiscard; // TODO: This is an awful lot of copying... would it be faster to bundle everything up into one array and block copy?
+            cleanupDiscard = other.cleanupDiscard;
+            eotDiscards = other.eotDiscards; // TODO: This is an awful lot of copying... would it be faster to bundle everything up into one array/struct and block copy?
         }
         public State(Dictionary<Card, int> decklist, int startingHandSize) {
             turn = 1;
@@ -219,8 +256,11 @@ namespace JeskaiAscendancyMCTS {
                 return moves.ToArray();
             }
             if (choiceScry > 0) {
-                Debug.Assert(choiceScry == 1, "Scry amounts larger than 1 not supported.");
-                return topOfDeck.Count > 0 ? new int[] { 1, -1 } : new int[] { 0 };
+                if (choiceScry == 1) return topOfDeck.Count > 0 ? new int[] { 1, -1 } : new int[] { 0 };
+                else if (choiceScry == 2) {
+                    return topOfDeck[0] == topOfDeck[1] ? new int[] { 0, 2, 4 } : new int[] { 0, 1, 2, 3, 4 };
+                }
+                throw new Exception("Scry amounts larger than 2 not supported.");
             }
             if (choiceTop > 0) {
                 return handQuantities.Select((n, i) => { return n > 0 ? i : 0; }).Where(n => n != 0).ToArray();
@@ -262,7 +302,20 @@ namespace JeskaiAscendancyMCTS {
                 return new int[] { SPECIAL_MOVE_UNEARTH_FATESTITCHER };
             }
             // Playing lands and casting spells.
-            moves = new List<int>(4);
+            moves = new List<int>(8);
+            moves.Add(SPECIAL_MOVE_END_TURN);
+            if (omens > 0 && CanPay(manaDAG, MANA_COST_CRACK_OMEN)) {
+                moves.Add(SPECIAL_MOVE_CRACK_OMEN);
+            }
+            if (wells > 0 && CanPay(manaDAG, MANA_COST_CRACK_WELL)) {
+                moves.Add(SPECIAL_MOVE_CRACK_WELL);
+            }
+            if (graveyardRavings > 0 && CanPay(manaDAG, MANA_COST_FLASHBACK_RAVINGS)) {
+                moves.Add(SPECIAL_MOVE_FLASHBACK_RAVINGS);
+            }
+            if (graveyardThinks > 0 && CanPay(manaDAG, MANA_COST_FLASHBACK_THINK)) {
+                moves.Add(SPECIAL_MOVE_FLASHBACK_THINK);
+            }
             for (int i = landPlay ? 1 : LAND_ETB_TAPPED.Length; i < handQuantities.Length; i++) {
                 if (handQuantities[i] == 0) {
                     continue;
@@ -322,9 +375,17 @@ namespace JeskaiAscendancyMCTS {
                 if (i >= LAND_ETB_TAPPED.Length && !CanPay(manaDAG, MANA_COSTS[card])) {
                     continue;
                 }
+                if (card == Card.MagmaticInsight) {
+                    for (int j = 1; j < LAND_ETB_TAPPED.Length; j++) {
+                        if (handQuantities[j] > 0) {
+                            moves.Add((int)Card.MagmaticInsight);
+                            break;
+                        }
+                    }
+                    continue;
+                }
                 moves.Add(i);
             }
-            moves.Add(SPECIAL_MOVE_END_TURN);
             return moves.ToArray();
         }
         // Returns 1 for deterministic moves, and the probability of the resultant state for stochastic moves.
@@ -341,10 +402,7 @@ namespace JeskaiAscendancyMCTS {
                 while (move > 0) {
                     int cardIndex = move % CARD_ENUM_LENGTH;
                     Card card = (Card)cardIndex;
-                    GoToGraveyard(card);
-                    if (card == Card.ObsessiveSearch) {
-                        choiceObsessive++;
-                    }
+                    GoToGraveyard(card, true);
                     handQuantities[cardIndex]--;
                     choiceDiscard--;
                     move /= CARD_ENUM_LENGTH;
@@ -362,12 +420,22 @@ namespace JeskaiAscendancyMCTS {
                 }
                 // If a spell or Ascendancy trigger(s), was waiting for a Jeskai Ascendancy discard, we can go ahead and let it resolve now.
             } else if (choiceScry > 0) {
-                if (move == 0) {
-                    // Library is empty.
-                }
-                if (move == -1) {
+                if (choiceScry == 1 && move == -1) {
                     bottomOfDeck.Enqueue(topOfDeck[0]);
                     topOfDeck.RemoveAt(0);
+                } else if (choiceScry == 2 && move > 0) {
+                    if (move == 1) {
+                        int temp = topOfDeck[0];
+                        topOfDeck[0] = topOfDeck[1];
+                        topOfDeck[1] = temp;
+                    } else if (move < 4) {
+                        bottomOfDeck.Enqueue(topOfDeck[move - 2]);
+                        topOfDeck.RemoveAt(move - 2);
+                    } else {
+                        bottomOfDeck.Enqueue(topOfDeck[0]);
+                        bottomOfDeck.Enqueue(topOfDeck[1]);
+                        topOfDeck.RemoveRange(0, 2);
+                    }
                 }
                 choiceScry = 0;
                 if (postScryDraws > 0) {
@@ -436,8 +504,9 @@ namespace JeskaiAscendancyMCTS {
             } else if (move == SPECIAL_MOVE_END_TURN) {
                 EndStep();
                 int cardsInHand = handQuantities.Sum();
-                if (cardsInHand > 7) {
-                    choiceDiscard = cardsInHand - 7;
+                if (cardsInHand > 7 || eotDiscards > 0) {
+                    choiceDiscard = Math.Max(cardsInHand - 7, eotDiscards);
+                    eotDiscards = 0;
                     cleanupDiscard = true;
                     return chanceEvent;
                 } else {
@@ -473,6 +542,30 @@ namespace JeskaiAscendancyMCTS {
                 untappedFatestitchers++;
                 totalPower++;
                 return chanceEvent;
+            } else if (move == SPECIAL_MOVE_CRACK_OMEN) {
+                Pay(MANA_COST_CRACK_OMEN);
+                omens--;
+                GoToGraveyard(Card.OmenOfTheSea);
+                RevealTop(2, false);
+                choiceScry = 2;
+                return chanceEvent;
+            } else if (move == SPECIAL_MOVE_CRACK_WELL) {
+                Pay(MANA_COST_CRACK_WELL);
+                wells--;
+                GoToGraveyard(Card.WitchingWell);
+                return CombineEvents(chanceEvent, Draw(2));
+            } else if (move == SPECIAL_MOVE_FLASHBACK_RAVINGS) {
+                Pay(MANA_COST_FLASHBACK_RAVINGS);
+                graveyardRavings--;
+                stack = Card.DesperateRavings;
+                exileStack = true;
+                TriggerAscendancies();
+            } else if (move == SPECIAL_MOVE_FLASHBACK_THINK) {
+                Pay(MANA_COST_FLASHBACK_THINK);
+                graveyardThinks--;
+                stack = Card.ThinkTwice;
+                exileStack = true;
+                TriggerAscendancies();
             } else if (move < LAND_ETB_TAPPED.Length) {
                 // Play a land.
                 handQuantities[move]--;
@@ -499,6 +592,16 @@ namespace JeskaiAscendancyMCTS {
                 // Cast a spell from hand.
                 handQuantities[move]--;
                 stack = (Card)move;
+                // Additional costs.
+                if (stack == Card.MagmaticInsight) {
+                    // SIMPLIFICATION: Discard heuristically for Magmatic Insight.
+                    for (int i = 0; i < LAND_ETB_TAPPED.Length; i++) {
+                        if (handQuantities[i] > 0) {
+                            handQuantities[i]--;
+                            GoToGraveyard((Card)i, true);
+                        }
+                    }
+                }
                 TriggerAscendancies();
                 if (stack == Card.TreasureCruise) {
                     // Delve.
@@ -510,6 +613,14 @@ namespace JeskaiAscendancyMCTS {
                     generic -= min;
                     min = Math.Min(generic, graveyardInventories);
                     graveyardInventories -= min;
+                    exiledOther += min;
+                    generic -= min;
+                    min = Math.Min(generic, graveyardRavings);
+                    graveyardRavings -= min;
+                    exiledOther += min;
+                    generic -= min;
+                    min = Math.Min(generic, graveyardThinks);
+                    graveyardThinks -= min;
                     exiledOther += min;
                     generic -= min;
                     min = Math.Min(generic, graveyardFatestitchers);
@@ -528,8 +639,10 @@ namespace JeskaiAscendancyMCTS {
             }
             Card spell = stack;
             stack = Card.None;
-            if (spell != Card.JeskaiAscendancy) {
-                // SIMPLIFICATION: Instants and sorceries go to the graveyard when cast instead of when resolving. We don't cast anything relevant at instant speed anyway.
+            if (exileStack) {
+                exiledOther++;
+                exileStack = false;
+            } else if (spell != Card.JeskaiAscendancy && spell != Card.OmenOfTheSea && spell != Card.WitchingWell) {
                 GoToGraveyard(spell);
             }
             switch (spell) {
@@ -544,6 +657,9 @@ namespace JeskaiAscendancyMCTS {
                         UntapLands(1);
                     }
                     return CombineEvents(chanceEvent, Draw());
+                case Card.DesperateRavings:
+                    chanceEvent = CombineEvents(chanceEvent, Draw(2));
+                    return CombineEvents(chanceEvent, DiscardRandom());
                 case Card.FranticInventory:
                     return CombineEvents(chanceEvent, Draw(graveyardInventories));
                 case Card.FranticSearch:
@@ -552,11 +668,24 @@ namespace JeskaiAscendancyMCTS {
                     return CombineEvents(chanceEvent, Draw(3));
                 case Card.GitaxianProbe:
                     return CombineEvents(chanceEvent, Draw());
+                case Card.IdeasUnbound:
+                    eotDiscards += 3;
+                    return CombineEvents(chanceEvent, Draw(3));
+                case Card.IzzetCharm:
+                    choiceDiscard = 2;
+                    return CombineEvents(chanceEvent, Draw(2));
                 case Card.JeskaiAscendancy:
                     ascendancies++;
                     return chanceEvent;
+                case Card.MagmaticInsight:
+                    return CombineEvents(chanceEvent, Draw(2));
                 case Card.ObsessiveSearch:
                     return CombineEvents(chanceEvent, Draw());
+                case Card.OmenOfTheSea:
+                    omens++;
+                    choiceScry = 2;
+                    postScryDraws = 1;
+                    return CombineEvents(chanceEvent, RevealTop(2, false));
                 case Card.Opt:
                     choiceScry = 1;
                     postScryDraws = 1;
@@ -564,8 +693,21 @@ namespace JeskaiAscendancyMCTS {
                 case Card.Ponder:
                     choicePonder = true;
                     return CombineEvents(chanceEvent, RevealTop(3, false));
+                case Card.ThinkTwice:
+                    return CombineEvents(chanceEvent, Draw());
+                case Card.ToArms:
+                    UntapLands(tappedFatestitchers);
+                    untappedFatestitchers += tappedFatestitchers;
+                    tappedFatestitchers = 0;
+                    return CombineEvents(chanceEvent, Draw(1));
                 case Card.TreasureCruise:
                     return CombineEvents(chanceEvent, Draw(3));
+                case Card.VisionSkeins:
+                    return CombineEvents(chanceEvent, Draw(2));
+                case Card.WitchingWell:
+                    wells++;
+                    choiceScry = 2;
+                    return CombineEvents(chanceEvent, RevealTop(2, false));
                 default:
                     throw new Exception("Unhandled spell resolving: " + CARD_NAMES[stack]);
             }
@@ -580,7 +722,9 @@ namespace JeskaiAscendancyMCTS {
         }
 
         ChanceEvent Draw() {
-            if (topOfDeck.Count == 0 && shuffledLibraryCount == 0 && bottomOfDeck.Count == 0) {
+            if (shuffledLibraryCount < 4) {
+                // SIMPLIFICAION: If we get this deep in our library without winning, it's probably not happening, and definitely not in a smart way.
+                // Plus this saves us from a lot of logic for edge cases like scrying min(2, topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count).
                 deckedOut = true;
                 return new ChanceEvent(0, 1);
             }
@@ -676,6 +820,19 @@ namespace JeskaiAscendancyMCTS {
             }
             return i;
         }
+        ChanceEvent DiscardRandom() {
+            int cardsInHand = handQuantities.Sum();
+            int selector = StaticRandom.Next(cardsInHand);
+            int i = 1;
+            for (; selector >= handQuantities[i]; i++) {
+                selector -= handQuantities[i];
+            }
+            float probability = handQuantities[i] / (float)cardsInHand;
+            handQuantities[i]--;
+            GoToGraveyard((Card)i, true);
+            SanityCheck();
+            return new ChanceEvent(i, probability);
+        }
 
         void EndStep() {
             whiteMana = tappedLands[(int)Card.Plains];
@@ -701,12 +858,17 @@ namespace JeskaiAscendancyMCTS {
             Debug.Assert(untappedLands[(int)Card.Mountain] == 0);
             Debug.Assert(untappedLands[(int)Card.Forest] == 0);
         }
-        void GoToGraveyard(Card card) {
+        void GoToGraveyard(Card card, bool discard = false) {
             if (card == Card.Fatestitcher) {
                 graveyardFatestitchers++;
             } else if (card == Card.FranticInventory) {
                 graveyardInventories++;
+            } else if (card == Card.DesperateRavings) {
+                graveyardRavings++;
+            } else if (card == Card.ThinkTwice) {
+                graveyardThinks++;
             } else {
+                if (card == Card.ObsessiveSearch && discard) choiceObsessive++;
                 graveyardOther++;
             }
         }
@@ -957,6 +1119,10 @@ namespace JeskaiAscendancyMCTS {
             // Battlefield.
             if (ascendancies == 1) tokens.Add("1 Jeskai Ascendancy");
             else if (ascendancies > 1) tokens.Add(ascendancies + " Jeskai Ascendancies");
+            if (omens == 1) tokens.Add("1 Omen of the Sea");
+            else if (omens > 1) tokens.Add(omens + " Omens of the Sea");
+            if (wells == 1) tokens.Add("1 Witching Well");
+            else if (wells > 1) tokens.Add(wells + " Witching Wells");
             if (untappedFatestitchers == 1) tokens.Add("1 untapped Fatestitcher");
             else if (untappedFatestitchers > 1) tokens.Add(untappedFatestitchers + " untapped Fatestitchers");
             if (tappedFatestitchers == 1) tokens.Add("1 tapped Fatestitcher");
@@ -1019,9 +1185,11 @@ namespace JeskaiAscendancyMCTS {
                 sb.AppendLine("Bottom of library: " + string.Join(", ", bottomOfDeck.Select(i => CARD_NAMES[(Card)i])));
             }
             // Graveyard.
-            if (graveyardFatestitchers > 0 || graveyardInventories > 0 || graveyardOther > 0) {
+            if (graveyardFatestitchers > 0 || graveyardRavings > 0 || graveyardInventories > 0 || graveyardOther > 0) {
                 if (graveyardFatestitchers > 0) tokens.Add(graveyardFatestitchers + " Fatestitcher");
                 if (graveyardInventories > 0) tokens.Add(graveyardInventories + " Frantic Inventory");
+                if (graveyardRavings > 0) tokens.Add(graveyardRavings + " Desperate Ravings");
+                if (graveyardThinks > 0) tokens.Add(graveyardThinks + " Think Twice");
                 if (graveyardOther > 0) tokens.Add(graveyardOther + ((graveyardFatestitchers > 0 || graveyardInventories > 0) ? " other" : graveyardOther == 1 ? " card" : " cards"));
                 sb.AppendLine("Graveyard: " + string.Join(", ", tokens));
                 tokens.Clear();
@@ -1042,13 +1210,33 @@ namespace JeskaiAscendancyMCTS {
             }
             if (choiceScry > 0) {
                 if (topOfDeck.Count == 0) return "Scry no-op (no cards in library).";
-                return string.Format("Scry {0} to the {1}.", CARD_NAMES[(Card)topOfDeck[0]], move == -1 ? "bottom" : "top");
+                if (choiceScry == 1) {
+                    return string.Format("Scry {0} to the {1}.", CARD_NAMES[(Card)topOfDeck[0]], move == -1 ? "bottom" : "top");
+                } else if (choiceScry == 2) {
+                    if (move == 0) {
+                        return string.Format("Scry {0} (top), then {1} (second from top).", CARD_NAMES[(Card)topOfDeck[0]], CARD_NAMES[(Card)topOfDeck[1]]);
+                    } else if (move == 1) {
+                        return string.Format("Scry {0} (top), then {1} (second from top).", CARD_NAMES[(Card)topOfDeck[1]], CARD_NAMES[(Card)topOfDeck[0]]);
+                    } else if (move == 2) {
+                        return string.Format("Scry {0} to the top and {1} to the bottom.", CARD_NAMES[(Card)topOfDeck[1]], CARD_NAMES[(Card)topOfDeck[0]]);
+                    } else if (move == 3) {
+                        return string.Format("Scry {0} to the top and {1} to the bottom.", CARD_NAMES[(Card)topOfDeck[0]], CARD_NAMES[(Card)topOfDeck[1]]);
+                    } else {
+                        return string.Format("Scry {0} and {1} to the bottom.", CARD_NAMES[(Card)topOfDeck[0]], CARD_NAMES[(Card)topOfDeck[1]]);
+                    }
+                }
+
             }
             if (choiceTop > 0) {
                 return string.Format("Brainstorm: {0} on top.", CARD_NAMES[(Card)move]);
             }
             if (choiceBottom > 0) {
-                return string.Format("London mulligan: {0} on bottom.", CARD_NAMES[(Card)move]);
+                List<string> tokens = new List<string>();
+                while (move > 0) {
+                    tokens.Add(CARD_NAMES[(Card)(move % CARD_ENUM_LENGTH)]);
+                    move /= CARD_ENUM_LENGTH;
+                }
+                return string.Format("London mulligan: bottom {0}.", string.Join(", ", tokens));
             }
             if (choicePonder) {
                 if (topOfDeck.Count == 0) return "Ponder: no-op (no cards in library).";
@@ -1081,14 +1269,26 @@ namespace JeskaiAscendancyMCTS {
             if (move == SPECIAL_MOVE_UNEARTH_FATESTITCHER) {
                 return "Unearth a Fatestitcher.";
             }
+            if (move == SPECIAL_MOVE_CRACK_OMEN) {
+                return "Sacrifice an Omen of the Sea.";
+            }
+            if (move == SPECIAL_MOVE_CRACK_WELL) {
+                return "Sacrifice a Witching Well.";
+            }
             if (move == SPECIAL_MOVE_END_TURN) {
                 return "End the turn.";
+            }
+            if (move == SPECIAL_MOVE_FLASHBACK_RAVINGS) {
+                return "Flashback Desperate Ravings.";
+            }
+            if (move == SPECIAL_MOVE_FLASHBACK_THINK) {
+                return "Flashback Think Twice.";
             }
             return string.Format("{0} {1}.", move < LAND_ETB_TAPPED.Length ? "Play" : "Cast", CARD_NAMES[(Card)move]);
         }
         public void SanityCheck() {
             Debug.Assert(shuffledLibraryCount == shuffledLibraryQuantities.Sum(), "Shuffled library count has not been updated correctly.");
-            int totalCards = topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count + handQuantities.Sum() + untappedLands.Sum() + tappedLands.Sum() + ascendancies + untappedFatestitchers + tappedFatestitchers + graveyardFatestitchers + graveyardInventories + graveyardOther + exiledFatestitchers + exiledOther;
+            int totalCards = topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count + handQuantities.Sum() + untappedLands.Sum() + tappedLands.Sum() + ascendancies + untappedFatestitchers + tappedFatestitchers + omens + wells + graveyardFatestitchers + graveyardThinks + graveyardInventories + graveyardRavings + graveyardOther + exiledFatestitchers + exiledOther;
             if (stack != Card.None) totalCards++;
             Debug.Assert(untappedLands.All(n => n >= 0), "Negative untapped land count.");
             Debug.Assert(tappedLands.All(n => n >= 0), "Negative tapped land count.");
@@ -1120,14 +1320,23 @@ namespace JeskaiAscendancyMCTS {
         // spells
         Brainstorm,
         CeruleanWisps,
+        DesperateRavings,
         Fatestitcher,
         FranticInventory,
         FranticSearch,
         GitaxianProbe,
+        IdeasUnbound,
+        IzzetCharm,
         JeskaiAscendancy,
+        MagmaticInsight,
         ObsessiveSearch,
+        OmenOfTheSea,
         Opt,
         Ponder,
+        ThinkTwice,
+        ToArms,
         TreasureCruise,
+        VisionSkeins,
+        WitchingWell,
     }
 }

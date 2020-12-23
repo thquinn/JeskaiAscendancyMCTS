@@ -16,5 +16,8 @@ namespace JeskaiAscendancyMCTS {
         public static int Next(int max) {
             return random.Value.Next(max);
         }
+        public static int Next(int min, int max) {
+            return random.Value.Next(min, max);
+        }
     }
 }

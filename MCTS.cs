@@ -52,7 +52,10 @@ namespace JeskaiAscendancyMCTS {
             // Simulation.
             while (!state.IsWon() && !state.IsLost()) {
                 int[] moves = state.GetMoves();
-                int i = StaticRandom.Next(moves.Length);
+                int i;
+                if (moves.Length == 1) i = 0;
+                else if (moves[0] == State.SPECIAL_MOVE_END_TURN) i = StaticRandom.Next(1, moves.Length); // Avoid ending the turn in simulations.
+                else i = StaticRandom.Next(moves.Length);
                 state.ExecuteMove(moves[i]);
                 if (state.turn >= rewards.Length) {
                     break;
@@ -91,7 +94,7 @@ namespace JeskaiAscendancyMCTS {
     }
 
     public class MCTSChoiceNode : MCTSNode {
-        public readonly static float EXPLORATION = 0.85f;
+        public readonly static double EXPLORATION = 0.85;
 
         public int[] moves;
         MCTSNode[] children;
