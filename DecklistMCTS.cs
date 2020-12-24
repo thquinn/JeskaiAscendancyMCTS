@@ -13,8 +13,8 @@ namespace JeskaiAscendancyMCTS {
             { Card.Mountain,         new Tuple<int, int>(0, 6)  },
             { Card.Forest,           new Tuple<int, int>(0, 0)  },
             { Card.IzzetBoilerworks, new Tuple<int, int>(0, 4)  },
-            { Card.MeanderingRiver,  new Tuple<int, int>(0, 4)  },
-            { Card.HighlandLake,     new Tuple<int, int>(0, 4)  },
+            { Card.MeanderingRiver,  new Tuple<int, int>(0, 8)  }, // Azorius Guildgate, Sejiri Refuge, Tranquil Cove
+            { Card.HighlandLake,     new Tuple<int, int>(0, 8)  }, // Izzet Guildgate, Swiftwater Cliffs, Wandering Fumarole
             { Card.MysticMonastery,  new Tuple<int, int>(0, 4)  },
             { Card.VividCreek,       new Tuple<int, int>(0, 4)  },
             { Card.EvolvingWilds,    new Tuple<int, int>(0, 8)  }, // Terramorphic Expanse
@@ -71,7 +71,6 @@ namespace JeskaiAscendancyMCTS {
         public void Rollout(int n) {
             while (root.rollouts < n) {
                 Rollout();
-                Console.WriteLine(this);
             }
         }
         public void Rollout() {
@@ -109,6 +108,8 @@ namespace JeskaiAscendancyMCTS {
                     current.children[i] = new DecklistMCTSNode(current, change);
                     current = current.children[i];
                     ChangeDecklist(decklist, current.change, additions, deletions);
+                    // SIMPLIFICATION: Once a copy of a card has been added in a subtree, copies of that card cannot be removed within the same subtree.
+                    // This can get us caught in local maxima but reduces branching and transpositions.
                     HashSet<int> reverseChanges = current.change < 0 ? deletions : additions;
                     reverseChanges.Remove(-current.change);
                 } else {
@@ -153,6 +154,22 @@ namespace JeskaiAscendancyMCTS {
             }
         }
 
+        public int NumRollouts() {
+            return root.rollouts;
+        }
+        public MCTSVote Vote() {
+            int highestRollouts = -1;
+            int highestIndex = -1;
+            for (int i = 0; i < root.children.Length && root.children[i] != null; i++) {
+                if (root.children[i].rollouts > highestRollouts) {
+                    highestRollouts = root.children[i].rollouts;
+                    highestIndex = i;
+                }
+            }
+            DecklistMCTSNode child = root.children[highestIndex];
+            return new MCTSVote(child.change, child.rollouts);
+        }
+
         public override string ToString() {
             StringBuilder sb = new StringBuilder();
             sb.AppendFormat("root: {0} total reward / {1} rollouts\n", root.totalReward, root.rollouts);
@@ -190,6 +207,15 @@ namespace JeskaiAscendancyMCTS {
                 }
             }
             return children[highestIndex];
+        }
+    }
+
+    public struct MCTSVote {
+        public int move, rollouts;
+        
+        public MCTSVote(int move, int rollouts) {
+            this.move = move;
+            this.rollouts = rollouts;
         }
     }
 }

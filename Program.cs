@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace JeskaiAscendancyMCTS {
@@ -28,17 +29,57 @@ namespace JeskaiAscendancyMCTS {
 
         static void Main(string[] args) {
             //RunManualTest(STARTING_LIST);
-            ParallelTest(1000, 10000);
+            //ParallelTest(2000, 1000);
             //ParallelMulligans(1000, 4);
             //SingleThreadDecklistRun();
+            RootParallelizedDecklistRun();
             Console.WriteLine("Done.");
             Console.ReadLine();
         }
 
+        static void RootParallelizedDecklistRun() {
+            DecklistMCTS[] decklistRuns = new DecklistMCTS[Environment.ProcessorCount];
+            for (int i = 0; i < decklistRuns.Length; i++) {
+                decklistRuns[i] = new DecklistMCTS(STARTING_LIST, 1000);
+            }
+            CancellationTokenSource cancel = new CancellationTokenSource(TimeSpan.FromMinutes(60));
+            ParallelOptions po = new ParallelOptions { MaxDegreeOfParallelism = decklistRuns.Length, CancellationToken = cancel.Token };
+            try {
+                Parallel.For(0, decklistRuns.Length, po, i => {
+                    DecklistMCTS dmcts = decklistRuns[i];
+                    while (true) {
+                        dmcts.Rollout();
+                        int numRollouts = dmcts.NumRollouts();
+                        if (numRollouts % 250 == 0) {
+                            Console.WriteLine("Tree {0} reached {1} rollouts.", i, numRollouts);
+                        }
+                        po.CancellationToken.ThrowIfCancellationRequested();
+                    }
+                });
+            } catch (OperationCanceledException) {
+                Console.WriteLine("Expected run cancellation {}.");
+            } finally {
+                cancel.Dispose();
+            }
+            MCTSVote[] votes = decklistRuns.Select(m => m.Vote()).ToArray();
+            Dictionary<int, int> voteTally = new Dictionary<int, int>();
+            foreach (MCTSVote vote in votes) {
+                if (voteTally.ContainsKey(vote.move)) {
+                    voteTally[vote.move] += vote.rollouts;
+                } else {
+                    voteTally[vote.move] = vote.rollouts;
+                }
+            }
+            int bestChange = voteTally.Aggregate((l, r) => l.Value > r.Value ? l : r).Key;
+            foreach (DecklistMCTS dmcts in decklistRuns) {
+                Console.WriteLine(dmcts);
+            }
+            Console.WriteLine("The votes are in: {0}", bestChange);
+        }
+
         static void SingleThreadDecklistRun() {
-            DecklistMCTS dmcts = new DecklistMCTS(STARTING_LIST, 10000);
-            dmcts.Rollout(1000);
-            Console.ReadLine();
+            DecklistMCTS dmcts = new DecklistMCTS(STARTING_LIST, 1000);
+            dmcts.Rollout(10000);
         }
 
         static void ParallelTest(int n, int rollouts) {
@@ -50,7 +91,7 @@ namespace JeskaiAscendancyMCTS {
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 #if DEBUG
-            Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 1 }, i => {
+            Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i => {
 #else
             Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i => {
 #endif
@@ -63,11 +104,11 @@ namespace JeskaiAscendancyMCTS {
                         wins++;
                     } else {
                     }
-                    Console.WriteLine("Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", 0, (totalReward / trials).ToString("N2"), trials, Simulation.REWARDS.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
+                    Console.WriteLine("Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", 0, (totalReward / trials).ToString("N3"), trials, Simulation.REWARDS.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
                 }
             });
             stopwatch.Stop();
-            Console.WriteLine("Done in {0} ms. Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", stopwatch.ElapsedMilliseconds, (totalReward / trials).ToString("N2"), trials, Simulation.REWARDS.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
+            Console.WriteLine("Done in {0} ms. Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", stopwatch.ElapsedMilliseconds, (totalReward / trials).ToString("N3"), trials, Simulation.REWARDS.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
         }
 
         static void ParallelMulligans(int n, int cardsInHand) {

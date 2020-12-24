@@ -207,7 +207,7 @@ namespace JeskaiAscendancyMCTS {
             tappedLands = new int[LAND_ETB_TAPPED.Length];
 
             // Draw opening hand.
-            // SIMPLIFICATION: Mulligans aren't part of the game tree, instead performed with meta-analysis.
+            // Mulligans aren't part of the game tree, instead performed with meta-analysis.
             for (int i = 0; i < 7; i++) {
                 Draw();
             }
@@ -505,7 +505,7 @@ namespace JeskaiAscendancyMCTS {
                 EndStep();
                 int cardsInHand = handQuantities.Sum();
                 if (cardsInHand > 7 || eotDiscards > 0) {
-                    choiceDiscard = Math.Max(cardsInHand - 7, eotDiscards);
+                    choiceDiscard = Math.Min(cardsInHand, Math.Max(cardsInHand - 7, eotDiscards));
                     eotDiscards = 0;
                     cleanupDiscard = true;
                     return chanceEvent;

@@ -27,6 +27,10 @@ namespace JeskaiAscendancyMCTS {
         public void Rollout(int n) {
             while (rootNode.rollouts < n) {
                 Rollout();
+                if (rootNode.moves.Length == 1) {
+                    // SIMPLIFICATION: Preventing rollouts in one-move situations will cause us to always mulligan no-land, no-Gitaxian-Probe hands. That's probably fine.
+                    return;
+                }
             }
         }
         public void Rollout() {
