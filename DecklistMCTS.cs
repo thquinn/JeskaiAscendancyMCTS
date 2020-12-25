@@ -7,27 +7,27 @@ using System.Threading.Tasks;
 
 namespace JeskaiAscendancyMCTS {
     public class DecklistMCTS {
-        static Dictionary<Card, Tuple<int, int>> CARD_QUANTITY_LIMITS = new Dictionary<Card, Tuple<int, int>>() {
+        public static Dictionary<Card, Tuple<int, int>> CARD_QUANTITY_LIMITS = new Dictionary<Card, Tuple<int, int>>() {
             { Card.Plains,           new Tuple<int, int>(0, 6)  },
             { Card.Island,           new Tuple<int, int>(0, 20) },
             { Card.Mountain,         new Tuple<int, int>(0, 6)  },
             { Card.Forest,           new Tuple<int, int>(0, 0)  },
             { Card.IzzetBoilerworks, new Tuple<int, int>(0, 4)  },
-            { Card.MeanderingRiver,  new Tuple<int, int>(0, 8)  }, // Azorius Guildgate, Sejiri Refuge, Tranquil Cove
-            { Card.HighlandLake,     new Tuple<int, int>(0, 8)  }, // Izzet Guildgate, Swiftwater Cliffs, Wandering Fumarole
+            { Card.MeanderingRiver,  new Tuple<int, int>(0, 12)  }, // could go up to 16: Azorius Guildgate, Sejiri Refuge, Tranquil Cove
+            { Card.HighlandLake,     new Tuple<int, int>(0, 12)  }, // could go up to 16: Izzet Guildgate, Swiftwater Cliffs, Wandering Fumarole
             { Card.MysticMonastery,  new Tuple<int, int>(0, 4)  },
             { Card.VividCreek,       new Tuple<int, int>(0, 4)  },
             { Card.EvolvingWilds,    new Tuple<int, int>(0, 8)  }, // Terramorphic Expanse
             { Card.Brainstorm,       new Tuple<int, int>(0, 4)  },
             { Card.CeruleanWisps,    new Tuple<int, int>(0, 4)  },
             { Card.DesperateRavings, new Tuple<int, int>(0, 4)  },
-            { Card.Fatestitcher,     new Tuple<int, int>(0, 4)  },
+            { Card.Fatestitcher,     new Tuple<int, int>(4, 4)  },
             { Card.FranticInventory, new Tuple<int, int>(0, 4)  },
             { Card.FranticSearch,    new Tuple<int, int>(0, 4)  },
             { Card.GitaxianProbe,    new Tuple<int, int>(0, 4)  },
             { Card.IdeasUnbound,     new Tuple<int, int>(0, 4)  },
             { Card.IzzetCharm,       new Tuple<int, int>(0, 4)  },
-            { Card.JeskaiAscendancy, new Tuple<int, int>(0, 4)  },
+            { Card.JeskaiAscendancy, new Tuple<int, int>(4, 4)  },
             { Card.MagmaticInsight,  new Tuple<int, int>(0, 4)  },
             { Card.ObsessiveSearch,  new Tuple<int, int>(0, 4)  },
             { Card.OmenOfTheSea,     new Tuple<int, int>(0, 4)  },
@@ -40,9 +40,9 @@ namespace JeskaiAscendancyMCTS {
             { Card.WitchingWell,     new Tuple<int, int>(0, 4)  },
         };
 
-        Dictionary<Card, int> startingDecklist;
+        public Dictionary<Card, int> startingDecklist;
         int rollouts;
-        HashSet<int> startingAdditions, startingDeletions;
+        public HashSet<int> startingAdditions, startingDeletions;
         DecklistMCTSNode root;
 
         public DecklistMCTS(Dictionary<Card, int> startingDecklist, int rollouts) {
@@ -66,6 +66,13 @@ namespace JeskaiAscendancyMCTS {
                 }
             }
             root = new DecklistMCTSNode(null, 0);
+        }
+        public DecklistMCTS(DMCTSSaveState save, int rollouts) {
+            startingDecklist = save.decklist;
+            this.rollouts = rollouts;
+            startingAdditions = new HashSet<int>(save.additions);
+            startingDeletions = new HashSet<int>(save.deletions);
+            root = new DecklistMCTSNode(null, save.lastMove);
         }
 
         public void Rollout(int n) {
@@ -100,7 +107,7 @@ namespace JeskaiAscendancyMCTS {
                 } else if (current.children[current.children.Length - 1] == null) {
                     // Expansion.
                     HashSet<int> changes = current.change < 0 ? additions : deletions;
-                    int i = 1;
+                    int i = 0;
                     for (; current.children[i] != null; i++) {
                         changes.Remove(current.children[i].change);
                     }

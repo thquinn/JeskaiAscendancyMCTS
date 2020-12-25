@@ -19,7 +19,7 @@ namespace JeskaiAscendancyMCTS {
             new int[] { 0, 1, 2 }
         };
         static readonly int CARD_ENUM_LENGTH = Enum.GetNames(typeof(Card)).Length;
-        static readonly Dictionary<Card, string> CARD_NAMES = new Dictionary<Card, string>() {
+        public static readonly Dictionary<Card, string> CARD_NAMES = new Dictionary<Card, string>() {
             { Card.None, "NONE" },
             // lands
             { Card.Plains, "Plains" },
@@ -722,11 +722,11 @@ namespace JeskaiAscendancyMCTS {
         }
 
         ChanceEvent Draw() {
-            if (shuffledLibraryCount < 4) {
+            if (shuffledLibraryCount < 5) {
                 // SIMPLIFICAION: If we get this deep in our library without winning, it's probably not happening, and definitely not in a smart way.
                 // Plus this saves us from a lot of logic for edge cases like scrying min(2, topOfDeck.Count + shuffledLibraryCount + bottomOfDeck.Count).
                 deckedOut = true;
-                return new ChanceEvent(0, 1);
+                // Don't prevent the draw, though, as this could cause us to discard from an empty hand.
             }
             float probability;
             int i;

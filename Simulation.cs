@@ -19,7 +19,7 @@ namespace JeskaiAscendancyMCTS {
                                     0.1521534f,     // average 5-card best-child expected reward
                                     0.1982474f } }, // average 6-card best-child expected reward
         };
-        // We seem to get a better average when we keep hands that are slightly worse than the average mulligan,
+        // At times, we seem to get a better average when we keep hands that are slightly worse than the average mulligan,
         // likely because the expected-reward-of-best-child metric is unreliable and it's better to not make close
         // mulligan decisions based on a relatively small # of rollouts. Plus, fewer mulligans means faster games.
         // This seems to vary greatly depending on both the number of mulligan and game rollouts.

@@ -9,8 +9,6 @@ namespace JeskaiAscendancyMCTS {
     using ChanceEvent = ValueTuple<int, float>;
     using MCTSChild = ValueTuple<int, MCTSNode>;
 
-    // TODO: If a node has only one child (or if it's a chance node that ends in a guaranteed win or loss), collapse it.
-
     public class MCTS {
         static float MIN_EXPANSION_PROBABILITY = 0;
 
@@ -38,7 +36,7 @@ namespace JeskaiAscendancyMCTS {
             MCTSNode current = rootNode;
             State state = new State(rootState);
             float probability = 1;
-            // TODO: Adjust this parameter and test.
+            // Experiments have indicated that this is best at 0. Surprising, but who am I to tell the machine otherwise?
             while (probability >= MIN_EXPANSION_PROBABILITY) {
                 MCTSChild child = current.GetChild();
                 if (child.Item2 == null) break;
@@ -52,7 +50,9 @@ namespace JeskaiAscendancyMCTS {
                 current = child.Item2;
             }
             // Expansion.
-            current = current.Expand(state);
+            if (probability >= MIN_EXPANSION_PROBABILITY) {
+                current = current.Expand(state);
+            }
             // Simulation.
             while (!state.IsWon() && !state.IsLost()) {
                 int[] moves = state.GetMoves();
@@ -98,7 +98,7 @@ namespace JeskaiAscendancyMCTS {
     }
 
     public class MCTSChoiceNode : MCTSNode {
-        public readonly static double EXPLORATION = 0.85;
+        public readonly static double EXPLORATION = .85;
 
         public int[] moves;
         MCTSNode[] children;
