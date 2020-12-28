@@ -17,11 +17,12 @@ namespace JeskaiAscendancyMCTS {
             { Card.Brainstorm, 4 },
             { Card.CeruleanWisps, 2 },
             { Card.Fatestitcher, 4 },
-            { Card.FranticInventory, 4 },
+            { Card.FranticInventory, 2 },
             { Card.FranticSearch, 4 },
             { Card.GitaxianProbe, 4 },
             { Card.JeskaiAscendancy, 4 },
             { Card.ObsessiveSearch, 2 },
+            { Card.OmenOfTheSea, 2 },
             { Card.Opt, 4 },
             { Card.Ponder, 4 },
             { Card.TreasureCruise, 2 },
@@ -52,10 +53,11 @@ namespace JeskaiAscendancyMCTS {
                 return true;
             }
             Console.WriteLine(save == null ? "Starting new run on {0} logical processors." : "Continuing run on {0} logical processors.", decklistRuns.Length);
+            Console.WriteLine("Round will conclude: {0:g}", DateTime.Now + TimeSpan.FromHours(6));
             for (int i = 0; i < decklistRuns.Length; i++) {
                 decklistRuns[i] = save == null ? new DecklistMCTS(STARTING_LIST, 1000) : new DecklistMCTS(save, 1000);
             }
-            CancellationTokenSource cancel = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            CancellationTokenSource cancel = new CancellationTokenSource(TimeSpan.FromHours(6));
             ParallelOptions po = new ParallelOptions { MaxDegreeOfParallelism = decklistRuns.Length, CancellationToken = cancel.Token };
             try {
                 Parallel.For(0, decklistRuns.Length, po, i => {
