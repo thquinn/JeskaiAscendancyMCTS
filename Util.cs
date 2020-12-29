@@ -10,15 +10,12 @@ namespace JeskaiAscendancyMCTS {
     public static class Util {
         static string SAVE_FILE = "dmcts.txt";
 
-        public static void Save(DecklistMCTS[] decklistRuns, int move) {
-            DecklistMCTS dmcts = decklistRuns[0];
+        public static void Save(DecklistMCTS dmcts, int move) {
             List<string> lines = new List<string>();
             if (File.Exists(SAVE_FILE)) {
                 lines.Add("");
             }
-            foreach (DecklistMCTS decklistRun in decklistRuns) {
-                lines.AddRange(SplitNewLines(decklistRun.ToString()));
-            }
+            lines.AddRange(SplitNewLines(dmcts.ToString()));
             DMCTSSaveState state = new DMCTSSaveState(dmcts, move);
             foreach (var kvp in dmcts.startingDecklist) {
                 lines.Add(string.Format("{0} {1}", kvp.Value, State.CARD_NAMES[kvp.Key]));

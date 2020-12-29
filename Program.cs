@@ -42,31 +42,32 @@ namespace JeskaiAscendancyMCTS {
         static void OptimizeDecklist() {
             bool complete = false;
             while (!complete) {
-                complete = RootParallelizedDecklistRun();
+                complete = TreeParallelizedDecklistRun();
             }
         }
-        static bool RootParallelizedDecklistRun() {
-            DecklistMCTS[] decklistRuns = new DecklistMCTS[Environment.ProcessorCount];
+        static bool TreeParallelizedDecklistRun() {
+# if DEBUG
+            int threadCount = 1;
+#else
+            int threadCount = Environment.ProcessorCount;
+#endif
             DMCTSSaveState save = Util.Load();
             if (save != null && save.lastMove == 0) {
                 Console.WriteLine("Previous run concluded. Relocate log and try again.");
                 return true;
             }
-            Console.WriteLine(save == null ? "Starting new run on {0} logical processors." : "Continuing run on {0} logical processors.", decklistRuns.Length);
-            Console.WriteLine("Round will conclude: {0:g}", DateTime.Now + TimeSpan.FromHours(6));
-            for (int i = 0; i < decklistRuns.Length; i++) {
-                decklistRuns[i] = save == null ? new DecklistMCTS(STARTING_LIST, 1000) : new DecklistMCTS(save, 1000);
-            }
-            CancellationTokenSource cancel = new CancellationTokenSource(TimeSpan.FromHours(6));
-            ParallelOptions po = new ParallelOptions { MaxDegreeOfParallelism = decklistRuns.Length, CancellationToken = cancel.Token };
+            Console.WriteLine(save == null ? "Starting new run on {0} logical processors." : "Continuing run on {0} logical processors.", threadCount);
+            Console.WriteLine("Round will conclude: {0:g}", DateTime.Now + TimeSpan.FromHours(8));
+            DecklistMCTS dmcts = save == null ? new DecklistMCTS(STARTING_LIST, 1000) : new DecklistMCTS(save, 1000);
+            CancellationTokenSource cancel = new CancellationTokenSource(TimeSpan.FromHours(8));
+            ParallelOptions po = new ParallelOptions { MaxDegreeOfParallelism = threadCount, CancellationToken = cancel.Token };
             try {
-                Parallel.For(0, decklistRuns.Length, po, i => {
-                    DecklistMCTS dmcts = decklistRuns[i];
+                Parallel.For(0, threadCount, po, i => {
                     while (true) {
                         dmcts.Rollout();
                         int numRollouts = dmcts.NumRollouts();
                         if (numRollouts % 250 == 0) {
-                            Console.WriteLine("Tree {0} reached {1} rollouts.", i, numRollouts);
+                            Console.WriteLine("Tree reached {0} rollouts.", numRollouts);
                         }
                         po.CancellationToken.ThrowIfCancellationRequested();
                     }
@@ -76,7 +77,7 @@ namespace JeskaiAscendancyMCTS {
             } finally {
                 cancel.Dispose();
             }
-            MCTSVote[] votes = decklistRuns.Select(m => m.Vote()).ToArray();
+            MCTSVote[] votes = new MCTSVote[] { dmcts.Vote() };
             Dictionary<int, int> voteTally = new Dictionary<int, int>();
             foreach (MCTSVote vote in votes) {
                 if (voteTally.ContainsKey(vote.move)) {
@@ -86,11 +87,9 @@ namespace JeskaiAscendancyMCTS {
                 }
             }
             int bestChange = voteTally.Aggregate((l, r) => l.Value > r.Value ? l : r).Key;
-            foreach (DecklistMCTS dmcts in decklistRuns) {
                 Console.WriteLine(dmcts);
-            }
             Console.WriteLine("The votes are in: {0}", bestChange);
-            Util.Save(decklistRuns, bestChange);
+            Util.Save(dmcts, bestChange);
             if (bestChange == 0) {
                 Console.WriteLine("Decklist finalized. The run has concluded.");
                 return true;

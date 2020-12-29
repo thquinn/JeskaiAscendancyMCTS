@@ -41,6 +41,7 @@ namespace JeskaiAscendancyMCTS {
                 threshold *= MULLIGAN_AVERSION;
                 mcts.Rollout(MULLIGAN_ROLLOUTS);
                 if (mcts.ExpectedRewardOfBestChild() >= threshold) {
+                    mcts.Advance();
                     break;
                 }
                 //Console.WriteLine("Took a mulligan to {0}.", n - 1);

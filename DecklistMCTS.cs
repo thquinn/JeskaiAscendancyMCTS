@@ -86,54 +86,63 @@ namespace JeskaiAscendancyMCTS {
             HashSet<int> deletions = new HashSet<int>(startingDeletions);
             // Selection + expansion.
             DecklistMCTSNode current = root;
+            DecklistMCTSNode next = null;
             while (true) {
                 if (current.parent != null && current.change == 0) {
                     // Terminal node.
                     break;
                 }
-                // First expansion.
-                if (current.children == null) {
-                    if (current.change >= 0) {
-                        current.children = new DecklistMCTSNode[deletions.Count + 1]; // The extra child is the first, "null change" child.
-                        current.children[0] = new DecklistMCTSNode(current, 0);
-                        current = current.children[0];
-                        break;
+                lock (current) {
+                    current.rollouts++;
+                    // First expansion.
+                    if (current.children == null) {
+                        if (current.change >= 0) {
+                            current.children = new DecklistMCTSNode[deletions.Count + 1]; // The extra child is the first, "null change" child.
+                            current.children[0] = new DecklistMCTSNode(current, 0);
+                            next = current.children[0];
+                            break;
+                        }
+                        current.children = new DecklistMCTSNode[additions.Count];
+                        int addition = additions.ElementAt(StaticRandom.Next(additions.Count));
+                        current.children[0] = new DecklistMCTSNode(current, addition);
+                        next = current.children[0];
+                        ChangeDecklist(decklist, next.change, additions, deletions);
+                    } else if (current.children[current.children.Length - 1] == null) {
+                        // Expansion.
+                        HashSet<int> changes = current.change < 0 ? additions : deletions;
+                        int i = 0;
+                        for (; current.children[i] != null; i++) {
+                            changes.Remove(current.children[i].change);
+                        }
+                        int change = changes.ElementAt(StaticRandom.Next(changes.Count));
+                        current.children[i] = new DecklistMCTSNode(current, change);
+                        next = current.children[i];
+                        ChangeDecklist(decklist, next.change, additions, deletions);
+                        // SIMPLIFICATION: Once a copy of a card has been added in a subtree, copies of that card cannot be removed within the same subtree.
+                        // This can get us caught in local maxima but reduces branching and transpositions.
+                        HashSet<int> reverseChanges = next.change < 0 ? deletions : additions;
+                        reverseChanges.Remove(-next.change);
+                    } else {
+                        // Selection.
+                        next = current.Select();
+                        ChangeDecklist(decklist, next.change, additions, deletions);
+                        HashSet<int> reverseChanges = next.change < 0 ? deletions : additions;
+                        reverseChanges.Remove(-next.change);
                     }
-                    current.children = new DecklistMCTSNode[additions.Count];
-                    int addition = additions.ElementAt(StaticRandom.Next(additions.Count));
-                    current.children[0] = new DecklistMCTSNode(current, addition);
-                    current = current.children[0];
-                    ChangeDecklist(decklist, current.change, additions, deletions);
-                } else if (current.children[current.children.Length - 1] == null) {
-                    // Expansion.
-                    HashSet<int> changes = current.change < 0 ? additions : deletions;
-                    int i = 0;
-                    for (; current.children[i] != null; i++) {
-                        changes.Remove(current.children[i].change);
-                    }
-                    int change = changes.ElementAt(StaticRandom.Next(changes.Count));
-                    current.children[i] = new DecklistMCTSNode(current, change);
-                    current = current.children[i];
-                    ChangeDecklist(decklist, current.change, additions, deletions);
-                    // SIMPLIFICATION: Once a copy of a card has been added in a subtree, copies of that card cannot be removed within the same subtree.
-                    // This can get us caught in local maxima but reduces branching and transpositions.
-                    HashSet<int> reverseChanges = current.change < 0 ? deletions : additions;
-                    reverseChanges.Remove(-current.change);
-                } else {
-                    // Selection.
-                    current = current.Select();
-                    ChangeDecklist(decklist, current.change, additions, deletions);
-                    HashSet<int> reverseChanges = current.change < 0 ? deletions : additions;
-                    reverseChanges.Remove(-current.change);
                 }
+                current = next;
+                current.rollouts++;
             }
+            current = next;
+            current.rollouts++;
             // Simulation.
             int turns = Simulation.RunGame(decklist, rollouts);
             float reward = turns == -1 ? 0 : Simulation.REWARDS[turns];
             // Backpropagation.
             while (current != null) {
-                current.totalReward += reward;
-                current.rollouts++;
+                lock (current) {
+                    current.totalReward += reward;
+                }
                 current = current.parent;
             }
         }
