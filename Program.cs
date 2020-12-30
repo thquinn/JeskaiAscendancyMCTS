@@ -27,19 +27,19 @@ namespace JeskaiAscendancyMCTS {
             { Card.Ponder, 4 },
             { Card.TreasureCruise, 2 },
         };
+        static TimeSpan DMCTS_ROUND_TIME = TimeSpan.FromHours(24);
 
         static void Main(string[] args) {
             //RunManualTest(STARTING_LIST);
-            //ParallelTest(10000, 1000);
+            //ParallelTest(5000, 1000);
             //ParallelMulligans(1000, 4);
             //SingleThreadDecklistRun();
-            //RootParallelizedDecklistRun();
-            OptimizeDecklist();
+            DecklistMCTS();
             Console.WriteLine("Done.");
             Console.ReadLine();
         }
 
-        static void OptimizeDecklist() {
+        static void DecklistMCTS() {
             bool complete = false;
             while (!complete) {
                 complete = TreeParallelizedDecklistRun();
@@ -57,25 +57,47 @@ namespace JeskaiAscendancyMCTS {
                 return true;
             }
             Console.WriteLine(save == null ? "Starting new run on {0} logical processors." : "Continuing run on {0} logical processors.", threadCount);
-            Console.WriteLine("Round will conclude: {0:g}", DateTime.Now + TimeSpan.FromHours(8));
+            DateTime endTime = DateTime.Now + DMCTS_ROUND_TIME;
             DecklistMCTS dmcts = save == null ? new DecklistMCTS(STARTING_LIST, 1000) : new DecklistMCTS(save, 1000);
-            CancellationTokenSource cancel = new CancellationTokenSource(TimeSpan.FromHours(8));
+            CancellationTokenSource cancel = new CancellationTokenSource(DMCTS_ROUND_TIME);
             ParallelOptions po = new ParallelOptions { MaxDegreeOfParallelism = threadCount, CancellationToken = cancel.Token };
-            try {
-                Parallel.For(0, threadCount, po, i => {
-                    while (true) {
-                        dmcts.Rollout();
-                        int numRollouts = dmcts.NumRollouts();
-                        if (numRollouts % 250 == 0) {
-                            Console.WriteLine("Tree reached {0} rollouts.", numRollouts);
+            bool done = false;
+            while (!done) {
+                Console.WriteLine("Round will conclude: {0:g}", endTime);
+                Console.WriteLine("Press any key to pause (might take a few seconds).");
+                try {
+                    Parallel.For(0, threadCount, po, i => {
+                        while (true) {
+                            if (Console.KeyAvailable) {
+                                break;
+                            }
+                            dmcts.Rollout();
+                            int numRollouts = dmcts.NumRollouts();
+                            if (numRollouts % 250 == 0) {
+                                Console.WriteLine("Tree reached {0} rollouts.", numRollouts);
+                            }
+                            po.CancellationToken.ThrowIfCancellationRequested();
                         }
-                        po.CancellationToken.ThrowIfCancellationRequested();
+                    });
+                } catch (OperationCanceledException) {
+                    Console.WriteLine("Round has finished.");
+                } finally {
+                    cancel.Dispose();
+                }
+                if (Console.KeyAvailable) {
+                    while (Console.KeyAvailable) {
+                        Console.ReadKey();
                     }
-                });
-            } catch (OperationCanceledException) {
-                Console.WriteLine("Round has finished.");
-            } finally {
-                cancel.Dispose();
+                    TimeSpan timeLeft = endTime - DateTime.Now;
+                    Console.WriteLine("Round paused. Press Enter to resume.");
+                    Console.ReadLine();
+                    endTime = DateTime.Now + timeLeft;
+                    cancel = new CancellationTokenSource(timeLeft);
+                    po = new ParallelOptions { MaxDegreeOfParallelism = threadCount, CancellationToken = cancel.Token };
+                    Console.WriteLine("Resuming.");
+                } else {
+                    done = true;
+                }
             }
             MCTSVote[] votes = new MCTSVote[] { dmcts.Vote() };
             Dictionary<int, int> voteTally = new Dictionary<int, int>();

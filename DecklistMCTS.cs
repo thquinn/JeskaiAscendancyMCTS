@@ -21,13 +21,13 @@ namespace JeskaiAscendancyMCTS {
             { Card.Brainstorm,       new Tuple<int, int>(0, 4)  },
             { Card.CeruleanWisps,    new Tuple<int, int>(0, 4)  },
             { Card.DesperateRavings, new Tuple<int, int>(0, 4)  },
-            { Card.Fatestitcher,     new Tuple<int, int>(4, 4)  },
+            { Card.Fatestitcher,     new Tuple<int, int>(4, 4)  }, // locked at 4 (combo piece)
             { Card.FranticInventory, new Tuple<int, int>(0, 4)  },
             { Card.FranticSearch,    new Tuple<int, int>(0, 4)  },
             { Card.GitaxianProbe,    new Tuple<int, int>(0, 4)  },
             { Card.IdeasUnbound,     new Tuple<int, int>(0, 4)  },
             { Card.IzzetCharm,       new Tuple<int, int>(0, 4)  },
-            { Card.JeskaiAscendancy, new Tuple<int, int>(4, 4)  },
+            { Card.JeskaiAscendancy, new Tuple<int, int>(4, 4)  }, // locked at 4 (combo piece)
             { Card.MagmaticInsight,  new Tuple<int, int>(0, 4)  },
             { Card.ObsessiveSearch,  new Tuple<int, int>(0, 4)  },
             { Card.OmenOfTheSea,     new Tuple<int, int>(0, 4)  },
@@ -131,7 +131,6 @@ namespace JeskaiAscendancyMCTS {
                     }
                 }
                 current = next;
-                current.rollouts++;
             }
             current = next;
             current.rollouts++;

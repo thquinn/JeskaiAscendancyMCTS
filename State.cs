@@ -196,7 +196,7 @@ namespace JeskaiAscendancyMCTS {
             foreach (var kvp in decklist) {
                 shuffledLibraryQuantities[(int)kvp.Key] = kvp.Value;
             }
-            Debug.Assert(shuffledLibraryQuantities.Sum() == 60, "Starting deck doesn't contain exactly 60 cards.");
+            Debug.Assert(shuffledLibraryQuantities.Sum() == 60, string.Format("Starting deck contains {0} cards.", shuffledLibraryQuantities.Sum()));
             topOfDeck = new List<int>();
             bottomOfDeck = new Queue<int>();
             // Hand.

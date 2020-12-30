@@ -70,7 +70,7 @@ namespace JeskaiAscendancyMCTS {
                 HashSet<int> validAdditions = new HashSet<int>(dmcts.startingAdditions);
                 validAdditions.Remove(-move);
                 HashSet<int> validDeletions = new HashSet<int>(dmcts.startingDeletions);
-                if (decklist[card] == DecklistMCTS.CARD_QUANTITY_LIMITS[card].Item1) {
+                if (!decklist.ContainsKey(card) || decklist[card] == DecklistMCTS.CARD_QUANTITY_LIMITS[card].Item1) {
                     validDeletions.Remove(move);
                 }
                 additions = validAdditions.ToArray();
