@@ -27,7 +27,7 @@ namespace JeskaiAscendancyMCTS {
             { Card.Ponder, 4 },
             { Card.TreasureCruise, 2 },
         };
-        static TimeSpan DMCTS_ROUND_TIME = TimeSpan.FromHours(24);
+        static TimeSpan DMCTS_ROUND_TIME = TimeSpan.FromHours(8);
 
         static void Main(string[] args) {
             //RunManualTest(STARTING_LIST);
