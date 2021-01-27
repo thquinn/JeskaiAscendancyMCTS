@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -9,34 +10,66 @@ using System.Threading.Tasks;
 namespace JeskaiAscendancyMCTS {
     class Program {
         static Dictionary<Card, int> STARTING_LIST = new Dictionary<Card, int>() {
-            { Card.Plains, 1 },
-            { Card.Island, 12 },
-            { Card.Mountain, 1 },
+            { Card.Plains, 3 },
+            { Card.Island, 7 },
+            { Card.Mountain, 3 },
             { Card.MysticMonastery, 4 },
-            { Card.EvolvingWilds, 4 },
+            { Card.EvolvingWilds, 1 },
             { Card.Brainstorm, 4 },
-            { Card.CeruleanWisps, 2 },
+            { Card.CeruleanWisps, 3 },
             { Card.Fatestitcher, 4 },
-            { Card.FranticInventory, 2 },
             { Card.FranticSearch, 4 },
             { Card.GitaxianProbe, 4 },
             { Card.JeskaiAscendancy, 4 },
-            { Card.ObsessiveSearch, 2 },
-            { Card.OmenOfTheSea, 2 },
-            { Card.Opt, 4 },
+            { Card.ObsessiveSearch, 4 },
+            { Card.Opt, 3 },
             { Card.Ponder, 4 },
-            { Card.TreasureCruise, 2 },
+            { Card.TreasureCruise, 3 },
+            { Card.VividCreek, 3 },
+            { Card.VisionSkeins, 1 },
+            { Card.IdeasUnbound, 1 },
         };
         static TimeSpan DMCTS_ROUND_TIME = TimeSpan.FromHours(8);
+        static int[] DMCTS_CHANGES = new int[] { -10, 19, -2, 9, -11, 18, -2, 1, -11, 29, -11, 28, -8, 3, -24, 29, -24, 21, -8, 6, -24, 3 };
+        static int RANDOM_SUFFIX = new Random().Next();
 
         static void Main(string[] args) {
             //RunManualTest(STARTING_LIST);
-            //ParallelTest(5000, 1000);
+            //ParallelTest(STARTING_LIST, 20000, 10000, true);
             //ParallelMulligans(1000, 4);
             //SingleThreadDecklistRun();
-            DecklistMCTS();
+            //DecklistMCTS();
+            //BenchmarkChanges();
+            GameToConsole();
             Console.WriteLine("Done.");
             Console.ReadLine();
+        }
+
+        static void GameToConsole() {
+            Simulation.RunGame(STARTING_LIST, 100000, true);
+        }
+
+        static void BenchmarkChanges() {
+            Dictionary<Card, int> decklist = new Dictionary<Card, int>(STARTING_LIST);
+            Console.WriteLine("Running baseline test...");
+            float averageReward = ParallelTest(decklist, 20000, 1000);
+            for (int i = 0; i < DMCTS_CHANGES.Length; i += 2) {
+                Card removal = (Card)(-DMCTS_CHANGES[i]);
+                if (decklist[removal] == 1) {
+                    decklist.Remove(removal);
+                } else {
+                    decklist[removal]--;
+                }
+                Card addition = (Card)DMCTS_CHANGES[i + 1];
+                if (decklist.ContainsKey(addition)) {
+                    decklist[addition]++;
+                } else {
+                    decklist[addition] = 1;
+                }
+                Console.WriteLine("Removed one copy of {0}.", State.CARD_NAMES[removal]);
+                Console.WriteLine("Added one copy of {0}.", State.CARD_NAMES[addition]);
+                averageReward = ParallelTest(decklist, 20000, 1000);
+            }
         }
 
         static void DecklistMCTS() {
@@ -124,7 +157,7 @@ namespace JeskaiAscendancyMCTS {
             dmcts.Rollout(10000);
         }
 
-        static void ParallelTest(int n, int rollouts) {
+        static float ParallelTest(Dictionary<Card, int> decklist, int n, int rollouts, bool print = false) {
             Tuple<bool> l = new Tuple<bool>(false);
             float totalReward = 0;
             int winTurnTotal = 0;
@@ -133,11 +166,11 @@ namespace JeskaiAscendancyMCTS {
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 #if DEBUG
-            Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i => {
+            Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 1 }, i => {
 #else
             Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i => {
 #endif
-                int turns = Simulation.RunGame(STARTING_LIST, rollouts);
+                int turns = Simulation.RunGame(decklist, rollouts);
                 lock (l) {
                     trials++;
                     if (turns > 0) {
@@ -146,11 +179,16 @@ namespace JeskaiAscendancyMCTS {
                         wins++;
                     } else {
                     }
-                    Console.WriteLine("Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", 0, (totalReward / trials).ToString("N3"), trials, Simulation.REWARDS.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
+                    if (print) {
+                        string s = string.Format("Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", 0, (totalReward / trials).ToString("N3"), trials, Simulation.REWARDS.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
+                        Console.WriteLine(s);
+                        File.AppendAllText("log" + RANDOM_SUFFIX + ".txt", "\n" + s);
+                    }
                 }
             });
             stopwatch.Stop();
             Console.WriteLine("Done in {0} ms. Average reward: {1} over {2} trials. Win rate before turn {3}: {4}%. Average win turn: {5}.", stopwatch.ElapsedMilliseconds, (totalReward / trials).ToString("N3"), trials, Simulation.REWARDS.Length, ((float)wins / trials * 100).ToString("N1"), (winTurnTotal / (float)wins).ToString("N2"));
+            return totalReward / trials;
         }
 
         static void ParallelMulligans(int n, int cardsInHand) {

@@ -57,6 +57,7 @@ namespace JeskaiAscendancyMCTS {
             while (!state.IsWon() && !state.IsLost()) {
                 int[] moves = state.GetMoves();
                 int i;
+                if (moves.Length == 0) break; // not supposed to happen, but we're getting an index out of bounds somewhere
                 if (moves.Length == 1) i = 0;
                 else if (moves[0] == State.SPECIAL_MOVE_END_TURN) i = StaticRandom.Next(1, moves.Length); // Avoid ending the turn in simulations.
                 else i = StaticRandom.Next(moves.Length);
@@ -94,6 +95,9 @@ namespace JeskaiAscendancyMCTS {
                 // We could go through the proper chance node and find our subtree, but it's not likely to have many rollouts. Let's just start fresh. Whatever.
                 rootNode = new MCTSChoiceNode(null, rootState.GetMoves());
             }
+        }
+        public int GetBestMove() {
+            return rootNode.GetBestChild().Item1;
         }
     }
 

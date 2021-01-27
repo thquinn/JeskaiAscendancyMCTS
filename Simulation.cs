@@ -26,7 +26,7 @@ namespace JeskaiAscendancyMCTS {
         // With the current 1K/10K config, it seems like acting according to expected values is optimal (which we like!)
         static float MULLIGAN_AVERSION = 1.0f;
 
-        public static int RunGame(Dictionary<Card, int> decklist, int rollouts) {
+        public static int RunGame(Dictionary<Card, int> decklist, int rollouts, bool toConsole = false) {
             MCTS mcts = null;
             State state = null;
             for (int n = 7; n > 0; n--) {
@@ -34,27 +34,36 @@ namespace JeskaiAscendancyMCTS {
                 mcts = new MCTS(state, REWARDS);
                 // Mulligan decision.
                 // TODO: More advanced mulligan logic.
+                if (toConsole) Console.WriteLine("Opening hand:\n" + state);
                 float threshold = MULLIGAN_THRESHOLDS[MULLIGAN_ROLLOUTS][n];
                 if (threshold == -1) {
+                    if (toConsole) Console.WriteLine("No known threshold, keep by default.");
                     break;
                 }
                 threshold *= MULLIGAN_AVERSION;
                 mcts.Rollout(MULLIGAN_ROLLOUTS);
                 if (mcts.ExpectedRewardOfBestChild() >= threshold) {
+                    if (toConsole) Console.WriteLine("Keep.");
+                    if (toConsole) Console.WriteLine("Move: " + mcts.rootState.MoveToString(mcts.GetBestMove()));
                     mcts.Advance();
+                    if (toConsole) Console.WriteLine(mcts.rootState);
                     break;
                 }
-                //Console.WriteLine("Took a mulligan to {0}.", n - 1);
+                if (toConsole) Console.WriteLine("Took a mulligan to {0}.", n - 1);
             }
             // Play the game.
             while (!mcts.rootState.IsWon() && !mcts.rootState.IsLost() && mcts.rootState.turn < REWARDS.Length) {
                 mcts.Rollout(rollouts);
+                if (toConsole) Console.WriteLine("Move: " + mcts.rootState.MoveToString(mcts.GetBestMove()));
                 mcts.Advance();
+                if (toConsole) Console.WriteLine(mcts.rootState);
                 mcts.rootState.SanityCheck();
             }
             if (state.IsWon()) {
+                if (toConsole) Console.WriteLine("Won on turn " + mcts.rootState.turn);
                 return mcts.rootState.turn;
             } else {
+                if (toConsole) Console.WriteLine("Failed to win before turn 8.");
                 return -1;
             }
         }

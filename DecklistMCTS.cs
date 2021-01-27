@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 namespace JeskaiAscendancyMCTS {
     public class DecklistMCTS {
+        static bool FORCE_CHANGE = true;
         public static Dictionary<Card, Tuple<int, int>> CARD_QUANTITY_LIMITS = new Dictionary<Card, Tuple<int, int>>() {
             { Card.Plains,           new Tuple<int, int>(0, 6)  },
             { Card.Island,           new Tuple<int, int>(0, 20) },
@@ -96,20 +97,27 @@ namespace JeskaiAscendancyMCTS {
                     current.rollouts++;
                     // First expansion.
                     if (current.children == null) {
-                        if (current.change <= 0) {
-                            current.children = new DecklistMCTSNode[additions.Count + 1]; // The extra child is the first, "null change" child.
-                            current.children[0] = new DecklistMCTSNode(current, 0);
-                            next = current.children[0];
-                            break;
+                        if (current.change >= 0) {
+                            if (current.parent == null && FORCE_CHANGE) {
+                                current.children = new DecklistMCTSNode[deletions.Count];
+                                current.rollouts--;
+                                next = current;
+                                continue;
+                            } else {
+                                current.children = new DecklistMCTSNode[deletions.Count + 1]; // The extra child is the first, "null change" child.
+                                current.children[0] = new DecklistMCTSNode(current, 0);
+                                next = current.children[0];
+                                break;
+                            }
                         }
-                        current.children = new DecklistMCTSNode[deletions.Count];
-                        int deletion = deletions.ElementAt(StaticRandom.Next(deletions.Count));
-                        current.children[0] = new DecklistMCTSNode(current, deletion);
+                        current.children = new DecklistMCTSNode[additions.Count];
+                        int addition = additions.ElementAt(StaticRandom.Next(additions.Count));
+                        current.children[0] = new DecklistMCTSNode(current, addition);
                         next = current.children[0];
                         ChangeDecklist(decklist, next.change, additions, deletions);
                     } else if (current.children[current.children.Length - 1] == null) {
                         // Expansion.
-                        HashSet<int> changes = current.change <= 0 ? additions : deletions;
+                        HashSet<int> changes = current.change < 0 ? additions : deletions;
                         int i = 0;
                         for (; current.children[i] != null; i++) {
                             changes.Remove(current.children[i].change);
